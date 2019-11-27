@@ -1,0 +1,8 @@
+# ignore intellij specific directories
+/.idea/*
+/project/*
+/target/*
+
+# ignore class and jar files
+*.class
+*.jar
