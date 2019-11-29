@@ -2,6 +2,7 @@ import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
 import java.security.MessageDigest
 
+import akka.actor.Status.{Failure, Success}
 import javax.xml.bind.annotation.adapters.HexBinaryAdapter
 
 import scala.collection.mutable
@@ -54,20 +55,21 @@ class Server(context: ActorContext[Server.Command])
     }
     table += ((n, null))
   })
-
+  /*
   def findSuccessor(id: BigInt){
     if(id > this.id && id <= nextId){
-      //return next
+      return next
     }
     else{
-      //val node = closestPrecedingNode(id)
+
+      val node = closestPrecedingNode(id)
       // TODO message node to find successor
-      //node ! FindSuccessor(id)
+
     }
   }
-  /*
-  def closestPrecedingNode(id: BigInt): ActorRef[Command] ={
 
+  def closestPrecedingNode(id: BigInt): ActorRef[Command] ={
+    null
   }
 
    */
@@ -92,9 +94,10 @@ class Server(context: ActorContext[Server.Command])
 }
 
 object ServerManager{
-  final case class Add(total: Int)
-  final case class RespondId(id: BigInt)
-  private var numServers = 1
+  sealed trait Command
+  final case class Add(total: Int) extends Command
+  final case class RespondId(id: BigInt) extends Command
+  case object Shutdown extends Command
 
   def createChordRing(servers: List[(BigInt, ActorRef[Server.Command])]): Unit ={
     val flatChordRing = servers.sortBy(_._1)
@@ -109,21 +112,30 @@ object ServerManager{
     last ! Server.UpdateTable
   }
 
-  def apply(): Behavior[Add] = Behaviors.receive{ (context, msg) =>
-    val servers =
-      (numServers to msg.total).map(i => {
-        val ref = context.spawn(Server(), s"server-$i")
-        val id = MD5.hash(ref.toString)
-        ref ! Server.SetId(id)
-        (id, ref)
-      })
-    createChordRing(servers.toList)
-    numServers += msg.total
-    Behaviors.same
+  def apply(): Behavior[Command] = {
+    Behaviors.receive[Command]{
+      (context, msg) =>
+        msg match {
+          case Add(total) =>
+            val servers =
+              (1 to total).map(i => {
+                val ref = context.spawn(Server(), s"server-$i")
+                val id = MD5.hash(ref.toString)
+                ref ! Server.SetId(id)
+                (id, ref)
+              })
+            createChordRing(servers.toList)
+            Behaviors.same
+          case Shutdown =>
+            Behaviors.stopped
+        }
+    }
   }
 }
 
 object Driver extends App {
   val system = ActorSystem(ServerManager(), "chord")
   system ! ServerManager.Add(5)
+  Thread.sleep(5000)
+  system ! ServerManager.Shutdown
 }
