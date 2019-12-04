@@ -56,13 +56,13 @@ class Server(context: ActorContext[Server.Command])
   import Server._
   // Actor reference to the next server in the chord ring
   private var next: ActorRef[Server.Command] = null;
-  // Cache ID of next server in the chord ring
+  // Cache id of next server in the chord ring
   private var nextId: BigInt = 0
   // Finger table used for routing messages
   private var table: List[(BigInt, ActorRef[Command])] = null
-  // Set ID as hash of context username
+  // Set id as hash of context username
   private var id: BigInt = MD5.hash(context.self.toString)
-  // IDs for finger table entries, n+2^{k-1} for 1 <= k <= 128
+  // Ids for finger table entries, n+2^{k-1} for 1 <= k <= 128
   private var tableIds =
     (0 to 127).map(i =>{
       var n = this.id + (BigInt(1) << i)
@@ -87,7 +87,25 @@ class Server(context: ActorContext[Server.Command])
     Behaviors
       .setup[AnyRef] { context =>
         context.log.info(s"In ${context.self}, looking for: $id, parent: $parent, replyTo: $replyTo")
-        // Check if ID falls in range (this.id, id]
+        // Check if in node with largest id in chord ring
+        if(this.id > nextId){
+          context.log.info(s"at last node in chord ring: $parent")
+          if(id > this.id){
+            context.log.info("id > this.id")
+            context.log.info(s"Found $id in $parent")
+            context.log.info(s"Forwarding $next to $replyTo")
+            replyTo ! FoundSuccessor(next)
+            Behaviors.stopped
+          }
+        }
+        if(id <= this.nextId){
+          context.log.info(s"$id <= ${this.id}")
+        }
+        else{
+          context.log.info(s"$id > ${this.id}")
+        }
+
+        // Check if id falls in range (this.id, id]
         if(id > this.id && id <= nextId){
           context.log.info(s"Found $id in $parent")
           context.log.info(s"Forwarding $next to $replyTo")
@@ -177,7 +195,7 @@ object ServerManager{
           case Add(total) =>
             val servers =
               (1 to total).map(i => {
-                val ref = context.spawn(Server(), s"server-$i")
+                val ref = context.spawn(Server(), s"servers-$i")
                 val id = MD5.hash(ref.toString)
                 ref ! Server.SetId(id)
                 (id, ref)
@@ -194,6 +212,6 @@ object ServerManager{
 object Driver extends App {
   val system = ActorSystem(ServerManager(), "chord")
   system ! ServerManager.Add(5)
-  Thread.sleep(5000)
+  Thread.sleep(7000)
   system ! ServerManager.Shutdown
 }
