@@ -89,8 +89,11 @@ class Server(context: ActorContext[Server.Command])
         context.log.info(s"In ${context.self}, looking for: $id, parent: $parent, replyTo: $replyTo")
         // Check if in node with largest id in chord ring
         if(this.id > nextId){
+          context.log.info(s"${this.id} > $nextId")
           context.log.info(s"at last node in chord ring: $parent")
-          if(id > this.id){
+          // Check if id greater than largest chord ring or
+          // less than the smallest id
+          if(id > this.id || id <= nextId){
             context.log.info("id > this.id")
             context.log.info(s"Found $id in $parent")
             context.log.info(s"Forwarding $next to $replyTo")
@@ -98,12 +101,14 @@ class Server(context: ActorContext[Server.Command])
             Behaviors.stopped
           }
         }
+        /*
         if(id <= this.nextId){
-          context.log.info(s"$id <= ${this.id}")
+          context.log.info(s"$id <= ${this.nextId}")
         }
         else{
-          context.log.info(s"$id > ${this.id}")
+          context.log.info(s"$id > ${this.nextId}")
         }
+         */
 
         // Check if id falls in range (this.id, id]
         if(id > this.id && id <= nextId){
@@ -122,12 +127,13 @@ class Server(context: ActorContext[Server.Command])
           Behaviors.receiveMessage{
             case FoundSuccessor(successor) => {
               // Forward successor to actor that requested successor
-              context.log.info(s"Forwarding $successor to $replyTo")
               replyTo ! FoundSuccessor(successor)
               // Stop child session
               Behaviors.stopped
             }
-            case _ => Behaviors.unhandled
+            case _ => {
+              context.log.info("UNKNOWN MESSAGE RECEIVED IN CHILD")
+              Behaviors.unhandled}
           }
         }
       }.narrow[NotUsed]
@@ -139,7 +145,7 @@ class Server(context: ActorContext[Server.Command])
         // Create child session to handle successor request (concurrent)
         val name = s"finding-successor-$id"
         println(name)
-        context.spawn(findSuccessor(context.self, ref, id), name)
+        context.spawn(findSuccessor(context.self, ref, id), s"finding-successor-$id")
         this
       case SetId(id) =>
         this.id = id
@@ -173,10 +179,12 @@ object ServerManager{
   case object Shutdown extends Command
 
   def createChordRing(servers: List[(BigInt, ActorRef[Server.Command])]): Unit ={
+    // Sort chord ring by server ids
     val flatChordRing = servers.sortBy(_._1)
     // Set prev of first node to be the last node (circular list)
     var prev = flatChordRing.last._2
     // Set successors for nodes in chord ring
+    println(s"id: ${flatChordRing.last._1}")
     flatChordRing.foreach{
       case (id, ref) =>{
         prev ! Server.SetSuccessor(ref, id)
