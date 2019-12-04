@@ -87,6 +87,7 @@ class Server(context: ActorContext[Server.Command])
     Behaviors
       .setup[AnyRef] { context =>
         context.log.info(s"In ${context.self}, looking for: $id, parent: $parent, replyTo: $replyTo")
+        context.log.info("***************************** start *****************************")
         // Check if in node with largest id in chord ring
         if(this.id > nextId){
           context.log.info(s"${this.id} > $nextId")
@@ -98,44 +99,72 @@ class Server(context: ActorContext[Server.Command])
             context.log.info(s"Found $id in $parent")
             context.log.info(s"Forwarding $next to $replyTo")
             replyTo ! FoundSuccessor(next)
+            context.log.info("***************************** end *****************************")
             Behaviors.stopped
           }
-        }
-        /*
-        if(id <= this.nextId){
-          context.log.info(s"$id <= ${this.nextId}")
-        }
-        else{
-          context.log.info(s"$id > ${this.nextId}")
-        }
-         */
-
-        // Check if id falls in range (this.id, id]
-        if(id > this.id && id <= nextId){
-          context.log.info(s"Found $id in $parent")
-          context.log.info(s"Forwarding $next to $replyTo")
-          // Forward our next to actor that requested successor
-          replyTo ! FoundSuccessor(next)
-          // Stop child session
-          Behaviors.stopped
-        }
-        else{
-          // Find the closest preceding node
-          val node = closestPrecedingNode(id)
-          // Request successor from closest preceding node
-          node ! FindSuccessor(context.self, id)
-          Behaviors.receiveMessage{
-            case FoundSuccessor(successor) => {
-              // Forward successor to actor that requested successor
-              replyTo ! FoundSuccessor(successor)
+          else{
+            // Check if id falls in range (this.id, id]
+            if(id > this.id && id <= nextId){
+              context.log.info(s"Found $id in $parent")
+              context.log.info(s"Forwarding $next to $replyTo")
+              // Forward our next to actor that requested successor
+              replyTo ! FoundSuccessor(next)
+              context.log.info("***************************** end *****************************")
               // Stop child session
               Behaviors.stopped
             }
-            case _ => {
-              context.log.info("UNKNOWN MESSAGE RECEIVED IN CHILD")
-              Behaviors.unhandled}
+            else{
+              // Find the closest preceding node
+              val node = closestPrecedingNode(id)
+              // Request successor from closest preceding node
+              node ! FindSuccessor(context.self, id)
+              Behaviors.receiveMessage{
+                case FoundSuccessor(successor) => {
+                  // Forward successor to actor that requested successor
+                  replyTo ! FoundSuccessor(successor)
+                  context.log.info("***************************** end *****************************")
+                  // Stop child session
+                  Behaviors.stopped
+                }
+                case _ => {
+                  context.log.info("UNKNOWN MESSAGE RECEIVED IN CHILD")
+                  Behaviors.unhandled}
+              }
+            }
           }
         }
+        else{
+          // Check if id falls in range (this.id, id]
+          if(id > this.id && id <= nextId){
+            context.log.info(s"Found $id in $parent")
+            context.log.info(s"Forwarding $next to $replyTo")
+            // Forward our next to actor that requested successor
+            replyTo ! FoundSuccessor(next)
+            context.log.info("***************************** end *****************************")
+            // Stop child session
+            Behaviors.stopped
+          }
+          else{
+            // Find the closest preceding node
+            val node = closestPrecedingNode(id)
+            // Request successor from closest preceding node
+            node ! FindSuccessor(context.self, id)
+            Behaviors.receiveMessage{
+              case FoundSuccessor(successor) => {
+                // Forward successor to actor that requested successor
+                replyTo ! FoundSuccessor(successor)
+                context.log.info("***************************** end *****************************")
+                // Stop child session
+                Behaviors.stopped
+              }
+              case _ => {
+                context.log.info("UNKNOWN MESSAGE RECEIVED IN CHILD")
+                Behaviors.unhandled}
+            }
+          }
+        }
+
+
       }.narrow[NotUsed]
     }
 
@@ -203,7 +232,7 @@ object ServerManager{
           case Add(total) =>
             val servers =
               (1 to total).map(i => {
-                val ref = context.spawn(Server(), s"servers-$i")
+                val ref = context.spawn(Server(), s"serverss-$i")
                 val id = MD5.hash(ref.toString)
                 ref ! Server.SetId(id)
                 (id, ref)
