@@ -11,6 +11,8 @@ import Server.{FindSuccessor, UpdateTable}
 import akka.NotUsed
 import javax.xml.bind.annotation.adapters.HexBinaryAdapter
 
+import scala.compat.java8.FutureConverters.CompletionStageOps
+
 object MD5{
   private val hashAlgorithm = MessageDigest.getInstance("MD5")
   private val hexAdapter = new HexBinaryAdapter()
@@ -33,13 +35,14 @@ object Server{
   final case class GetSuccessor(id: BigInt) extends Command
   final case class SetSuccessor(next: ActorRef[Server.Command], nextId: BigInt) extends Command
   final case class FindSuccessor(replyTo: ActorRef[Server.Command], id: BigInt) extends Command
-  final case class FoundSuccessor(successor: ActorRef[Command]) extends Command
+  final case class FoundSuccessor(successor: ActorRef[Command], id: BigInt) extends Command
 
   final case class SetId(id: BigInt) extends Command
   final case class GetId(replyTo: ActorRef[Command]) extends Command
   final case class RespondId(id: BigInt) extends Command
 
   case object UpdateTable extends Command
+  final case class UpdatedTable(table: List[(BigInt, ActorRef[Command])]) extends Command
 
 
   // Largest value created by a 128 bit hash such as MD5
@@ -78,6 +81,31 @@ class Server(context: ActorContext[Server.Command])
     next // just use next to lookup nodes for now (simple ring)
   }
 
+  def updateTable(): Behavior[NotUsed] ={
+    Behaviors
+      .setup[AnyRef] { context =>
+        // Counter for the number of responses
+        var responses = 0
+        // Request successor for each entry in finger table
+        tableIds.foreach( id => next ! FindSuccessor(context.self, id))
+
+        Behaviors.receiveMessage{
+          case FoundSuccessor(successor, id) => {
+            context.log.info(s"$id: $successor, ${responses+1}")
+            responses += 1
+            // Check if all requests have been responded too
+            if(responses == tableIds.size){
+              Behaviors.stopped
+            }
+            else{
+              Behaviors.same
+            }
+          }
+          case _ => Behaviors.unhandled
+        }
+      }.narrow[NotUsed]
+  }
+
   /* Behavior for child session to find successor.
    */
   def findSuccessor(parent: ActorRef[Command], replyTo: ActorRef[Command], id: BigInt): Behavior[NotUsed] = {
@@ -88,7 +116,7 @@ class Server(context: ActorContext[Server.Command])
           // Check if id greater than largest chord ring or
           // less than the smallest id
           if(id > this.id || id <= nextId){
-            replyTo ! FoundSuccessor(next)
+            replyTo ! FoundSuccessor(next, id)
             Behaviors.stopped
           }
           else{
@@ -97,13 +125,13 @@ class Server(context: ActorContext[Server.Command])
             // Request successor from closest preceding node
             node ! FindSuccessor(context.self, id)
             Behaviors.receiveMessage{
-              case FoundSuccessor(successor) => {
+              case FoundSuccessor(successor, id) => {
                 // Forward successor to actor that requested successor
-                replyTo ! FoundSuccessor(successor)
+                replyTo ! FoundSuccessor(successor,id)
                 // Stop child session
                 Behaviors.stopped
               }
-              case _ => {Behaviors.unhandled}
+              case _ => Behaviors.unhandled
             }
           }
         }
@@ -111,7 +139,7 @@ class Server(context: ActorContext[Server.Command])
           // Check if id falls in range (this.id, id]
           if(id > this.id && id <= nextId){
             // Forward our next to actor that requested successor
-            replyTo ! FoundSuccessor(next)
+            replyTo ! FoundSuccessor(next, id)
             // Stop child session
             Behaviors.stopped
           }
@@ -121,13 +149,13 @@ class Server(context: ActorContext[Server.Command])
             // Request successor from closest preceding node
             node ! FindSuccessor(context.self, id)
             Behaviors.receiveMessage{
-              case FoundSuccessor(successor) => {
+              case FoundSuccessor(successor, id) => {
                 // Forward successor to actor that requested successor
-                replyTo ! FoundSuccessor(successor)
+                replyTo ! FoundSuccessor(successor, id)
                 // Stop child session
                 Behaviors.stopped
               }
-              case _ => {Behaviors.unhandled}
+              case _ => Behaviors.unhandled
             }
           }
         }
@@ -138,8 +166,7 @@ class Server(context: ActorContext[Server.Command])
     msg match {
       case FindSuccessor(ref,id) =>
         // Create child session to handle successor request (concurrent)
-        //context.spawn(findSuccessor(context.self, ref, id), s"finding-successor-$id")
-        context.spawnAnonymous(findSuccessor(context.self, ref, id))
+          context.spawnAnonymous(findSuccessor(context.self, ref, id))
         this
       case SetId(id) =>
         this.id = id
@@ -149,16 +176,13 @@ class Server(context: ActorContext[Server.Command])
         this.nextId = nextId
         this
       case UpdateTable =>
-        // TODO set finger table nodes
-        // Create child session to handle successor request (concurrent)
-        val testID = BigInt("75669289783886579685404451884628016793")
-        context.log.info(s"Finding successor to $testID...")
-        context.spawnAnonymous(findSuccessor(context.self, context.self, testID))
+        // TODO verify that finger table entries are correct
+        context.spawnAnonymous(updateTable())
         this
       case GetId(replyTo) =>
         replyTo ! RespondId(id)
         this
-      case FoundSuccessor(successor) =>
+      case FoundSuccessor(successor,id) =>
         context.log.info(s"Found successor: $successor")
         this
     }
@@ -187,9 +211,11 @@ object ServerManager{
     }
     val last = flatChordRing.last._2
     last ! UpdateTable
+
   }
 
   def apply(): Behavior[Command] = {
+
     Behaviors.receive[Command]{
       (context, msg) =>
         msg match {
@@ -217,6 +243,7 @@ object Driver extends App {
   // Add 5 servers to the system
   system ! ServerManager.Add(5)
   // Sleep for 7 seconds and then send shutdown signal
+
   Thread.sleep(7000)
   system ! ServerManager.Shutdown
 }
