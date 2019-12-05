@@ -26,23 +26,21 @@ object MD5{
 
 object Server{
   sealed trait Command
+
   case object Start extends Command
   case object Pause extends Command
 
   final case class GetSuccessor(id: BigInt) extends Command
   final case class SetSuccessor(next: ActorRef[Server.Command], nextId: BigInt) extends Command
-  final case class SetTableSuccessor(node: ActorRef[Server.Command], close: BigInt, id: BigInt) extends Command
   final case class FindSuccessor(replyTo: ActorRef[Server.Command], id: BigInt) extends Command
+  final case class FoundSuccessor(successor: ActorRef[Command]) extends Command
 
   final case class SetId(id: BigInt) extends Command
   final case class GetId(replyTo: ActorRef[Command]) extends Command
   final case class RespondId(id: BigInt) extends Command
 
-  case object GetNextId extends Command
   case object UpdateTable extends Command
 
-  final case class FoundSuccessor(successor: ActorRef[Command]) extends Command
-  final case class SuccessorResponse(id: BigInt)
 
   // Largest value created by a 128 bit hash such as MD5
   val md5Max = BigInt(1) << 128
@@ -72,7 +70,6 @@ class Server(context: ActorContext[Server.Command])
       }
       n
   })
-
 
   /* Find the node in the finger table closest to the ID.
    */
@@ -170,7 +167,6 @@ class Server(context: ActorContext[Server.Command])
 object ServerManager{
   sealed trait Command
   final case class Add(total: Int) extends Command
-  final case class RespondId(id: BigInt) extends Command
   case object Shutdown extends Command
 
   def createChordRing(servers: List[(BigInt, ActorRef[Server.Command])]): Unit ={
@@ -198,11 +194,13 @@ object ServerManager{
           case Add(total) =>
             val servers =
               (1 to total).map(i => {
+                // Hash server name to create id
                 val ref = context.spawn(Server(), s"server:$i")
                 val id = MD5.hash(ref.toString)
                 ref ! Server.SetId(id)
                 (id, ref)
               })
+            // Create chord ring from server hashes
             createChordRing(servers.toList)
             Behaviors.same
           case Shutdown =>
@@ -214,7 +212,9 @@ object ServerManager{
 
 object Driver extends App {
   val system = ActorSystem(ServerManager(), "chord")
+  // Add 5 servers to the system
   system ! ServerManager.Add(5)
+  // Sleep for 7 seconds and then send shutdown signal
   Thread.sleep(7000)
   system ! ServerManager.Shutdown
 }
