@@ -81,8 +81,63 @@ class Server(context: ActorContext[Server.Command])
     next // just use next to lookup nodes for now (simple ring)
   }
 
+  def findSuccessor(parent: ActorRef[Command], replyTo: ActorRef[Command], id: BigInt): Behavior[NotUsed] = {
+    Behaviors
+      .setup[AnyRef] { context =>
+        // Check if in node with largest id in chord ring
+        if(this.id > nextId){
+          // Check if id greater than largest chord ring or
+          // less than the smallest id
+          if(id > this.id || id <= nextId){
+            replyTo ! FoundSuccessor(next)
+            Behaviors.stopped
+          }
+          else{
+            // Find the closest preceding node
+            val node = closestPrecedingNode(id)
+            // Request successor from closest preceding node
+            node ! FindSuccessor(context.self, id)
+            Behaviors.receiveMessage{
+              case FoundSuccessor(successor) => {
+                // Forward successor to actor that requested successor
+                replyTo ! FoundSuccessor(successor)
+                // Stop child session
+                Behaviors.stopped
+              }
+              case _ => {Behaviors.unhandled}
+            }
+          }
+        }
+        else{
+          // Check if id falls in range (this.id, id]
+          if(id > this.id && id <= nextId){
+            // Forward our next to actor that requested successor
+            replyTo ! FoundSuccessor(next)
+            // Stop child session
+            Behaviors.stopped
+          }
+          else{
+            // Find the closest preceding node
+            val node = closestPrecedingNode(id)
+            // Request successor from closest preceding node
+            node ! FindSuccessor(context.self, id)
+            Behaviors.receiveMessage{
+              case FoundSuccessor(successor) => {
+                // Forward successor to actor that requested successor
+                replyTo ! FoundSuccessor(successor)
+                // Stop child session
+                Behaviors.stopped
+              }
+              case _ => {Behaviors.unhandled}
+            }
+          }
+        }
+      }.narrow[NotUsed]
+  }
+
   /* Behavior for child session to find successors.
    */
+  /*
   def findSuccessor(parent: ActorRef[Command], replyTo: ActorRef[Command], id: BigInt): Behavior[NotUsed] = {
     Behaviors
       .setup[AnyRef] { context =>
@@ -105,6 +160,7 @@ class Server(context: ActorContext[Server.Command])
           else{
             // Check if id falls in range (this.id, id]
             if(id > this.id && id <= nextId){
+              context.log.info("######################### makes no sense ######################")
               context.log.info(s"Found $id in $parent")
               context.log.info(s"Forwarding $next to $replyTo")
               // Forward our next to actor that requested successor
@@ -114,6 +170,13 @@ class Server(context: ActorContext[Server.Command])
               Behaviors.stopped
             }
             else{
+              if(id <= this.id){
+                context.log.info("id <= this.id")
+              }
+              if(id > nextId){
+                context.log.info("id > nextId")
+              }
+              context.log.info("####################### makes sense ?????? ######################")
               // Find the closest preceding node
               val node = closestPrecedingNode(id)
               // Request successor from closest preceding node
@@ -167,13 +230,12 @@ class Server(context: ActorContext[Server.Command])
 
       }.narrow[NotUsed]
     }
+    */
 
   override def onMessage(msg: Command): Behavior[Command] = {
     msg match {
       case FindSuccessor(ref,id) =>
         // Create child session to handle successor request (concurrent)
-        val name = s"finding-successor-$id"
-        println(name)
         context.spawn(findSuccessor(context.self, ref, id), s"finding-successor-$id")
         this
       case SetId(id) =>
@@ -187,6 +249,7 @@ class Server(context: ActorContext[Server.Command])
         // TODO set finger table nodes
         // Create child session to handle successor request (concurrent)
         val testID = BigInt("75669289783886579685404451884628016793")
+        context.log.info(s"Finding successor to $testID...")
         context.spawn(findSuccessor(context.self, context.self, testID),
           "finding-successor")
         this
@@ -194,7 +257,7 @@ class Server(context: ActorContext[Server.Command])
         replyTo ! RespondId(id)
         this
       case FoundSuccessor(successor) =>
-        context.log.info(s"successor: $successor")
+        context.log.info(s"Found successor: $successor")
         this
     }
   }
@@ -232,7 +295,7 @@ object ServerManager{
           case Add(total) =>
             val servers =
               (1 to total).map(i => {
-                val ref = context.spawn(Server(), s"serverss-$i")
+                val ref = context.spawn(Server(), s"server:$i")
                 val id = MD5.hash(ref.toString)
                 ref ! Server.SetId(id)
                 (id, ref)
