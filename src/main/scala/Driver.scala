@@ -81,20 +81,23 @@ class Server(context: ActorContext[Server.Command])
     next // just use next to lookup nodes for now (simple ring)
   }
 
-  def updateTable(): Behavior[NotUsed] ={
+  def updateTable(parent: ActorRef[Command]): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef] { context =>
         // Counter for the number of responses
         var responses = 0
-        // Request successor for each entry in finger table
+        // Request successor for each entry in finger table through immediate next
         tableIds.foreach( id => next ! FindSuccessor(context.self, id))
-
+        val table = mutable.ListBuffer[(BigInt, ActorRef[Command])]()
         Behaviors.receiveMessage{
           case FoundSuccessor(successor, id) => {
             context.log.info(s"$id: $successor, ${responses+1}")
             responses += 1
+            table += ((id, successor))
             // Check if all requests have been responded too
             if(responses == tableIds.size){
+              // Send updated table to be processed
+              parent ! UpdatedTable(table.sortBy(_._1).toList)
               Behaviors.stopped
             }
             else{
@@ -177,7 +180,12 @@ class Server(context: ActorContext[Server.Command])
         this
       case UpdateTable =>
         // TODO verify that finger table entries are correct
-        context.spawnAnonymous(updateTable())
+        context.spawnAnonymous(updateTable(context.self))
+        this
+      case UpdatedTable(table) =>
+        // Update current finger table
+        this.table = table
+        context.log.info("Updated table has been received!")
         this
       case GetId(replyTo) =>
         replyTo ! RespondId(id)
