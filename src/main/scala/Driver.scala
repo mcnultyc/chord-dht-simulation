@@ -78,6 +78,8 @@ class Server(context: ActorContext[Server.Command])
     next // just use next to lookup nodes for now (simple ring)
   }
 
+  /* Behavior for child session to find successor.
+   */
   def findSuccessor(parent: ActorRef[Command], replyTo: ActorRef[Command], id: BigInt): Behavior[NotUsed] = {
     Behaviors
       .setup[AnyRef] { context =>
@@ -136,7 +138,8 @@ class Server(context: ActorContext[Server.Command])
     msg match {
       case FindSuccessor(ref,id) =>
         // Create child session to handle successor request (concurrent)
-        context.spawn(findSuccessor(context.self, ref, id), s"finding-successor-$id")
+        //context.spawn(findSuccessor(context.self, ref, id), s"finding-successor-$id")
+        context.spawnAnonymous(findSuccessor(context.self, ref, id))
         this
       case SetId(id) =>
         this.id = id
@@ -150,8 +153,7 @@ class Server(context: ActorContext[Server.Command])
         // Create child session to handle successor request (concurrent)
         val testID = BigInt("75669289783886579685404451884628016793")
         context.log.info(s"Finding successor to $testID...")
-        context.spawn(findSuccessor(context.self, context.self, testID),
-          "finding-successor")
+        context.spawnAnonymous(findSuccessor(context.self, context.self, testID))
         this
       case GetId(replyTo) =>
         replyTo ! RespondId(id)
