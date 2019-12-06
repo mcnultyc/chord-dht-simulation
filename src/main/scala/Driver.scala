@@ -35,13 +35,17 @@ class RouteMetadata{
   }
 }
 
+// Class to keep metadata for inserts and lookups
+class FileMetadata(filename: String, size: Int){
+
+
+}
 
 object Server{
   sealed trait Command
   // Commands to start and pause the system
   case object Start extends Command
   case object Pause extends Command
-
   // Commands to update successors and handle routing requests
   final case class GetSuccessor(id: BigInt) extends Command
   final case class SetSuccessor(next: ActorRef[Server.Command], nextId: BigInt) extends Command
@@ -55,7 +59,7 @@ object Server{
   case object UpdateTable extends Command
   final case class UpdatedTable(table: List[(BigInt, ActorRef[Command])]) extends Command
   // Commands to insert and lookup data
-  final case class Insert(data: String) extends Command
+  final case class Insert(metadata: FileMetadata) extends Command
   final case class Lookup(key: BigInt) extends Command
   final case class FoundData(data: String) extends Command
 
@@ -95,10 +99,8 @@ class Server(context: ActorContext[Server.Command])
   /* Find the node in the finger table closest to the ID.
    */
   def closestPrecedingNode(id: BigInt): ActorRef[Command] ={
-    /*
     // TODO check finger table for closest preceding node
     if(table != null){
-      //context.log.info("TABLE IS NON-NULL")
       // Iterate through finger from largest to smallest key
       table.reverse.foreach{case (fingerId, ref) =>{
         // Select node with highest key that can fit the id given
@@ -108,12 +110,27 @@ class Server(context: ActorContext[Server.Command])
         }
       }}
     }
-    else{
-      //context.log.info(s"TABLE IS NULL")
-    }
-    */
     next // just use next to lookup nodes
   }
+
+
+  def insertFile(parent: ActorRef[Command], filename: String, size: Int): Behavior[NotUsed] ={
+    Behaviors
+      .setup[AnyRef]{ context =>
+        val key = MD5.hash(filename)
+
+        parent ! FindSuccessor(context.self, key)
+
+        Behaviors.receiveMessage{
+          case FoundSuccessor(successor, id) => {
+            successor ! Insert(new FileMetadata(filename, size))
+            Behaviors.stopped
+          }
+          case _ => Behaviors.unhandled
+        }
+      }.narrow[NotUsed]
+  }
+
 
   def updateTable(parent: ActorRef[Command]): Behavior[NotUsed] ={
     Behaviors
@@ -125,7 +142,6 @@ class Server(context: ActorContext[Server.Command])
         val table = mutable.ListBuffer[(BigInt, ActorRef[Command])]()
         Behaviors.receiveMessage{
           case FoundSuccessor(successor, id) => {
-            //context.log.info(s"$id: $successor, ${responses+1}")
             responses += 1
             table += ((id, successor))
             // Check if all requests have been responded too
@@ -158,7 +174,6 @@ class Server(context: ActorContext[Server.Command])
             Behaviors.stopped
           }
           else{
-            //context.log.info("Calling preceding node")
             // Find the closest preceding node
             val node = closestPrecedingNode(id)
             // Request successor from closest preceding node
@@ -184,15 +199,12 @@ class Server(context: ActorContext[Server.Command])
             Behaviors.stopped
           }
           else{
-            //context.log.info("Calling preceding node")
             // Find the closest preceding node
             val node = closestPrecedingNode(id)
-            //context.log.info(s"Forwarding request to: $node")
             // Request successor from closest preceding node
             node ! FindSuccessor(context.self, id)
             Behaviors.receiveMessage{
               case FoundSuccessor(successor, id) => {
-                //context.log.info(s"Forwarding back to: $replyTo")
                 // Forward successor to actor that requested successor
                 replyTo ! FoundSuccessor(successor, id)
                 // Stop child session
@@ -226,6 +238,10 @@ class Server(context: ActorContext[Server.Command])
       case UpdatedTable(table) =>
         // Update current finger table
         this.table = table
+        println(s"*******************************ref: ${context.self}*******************************")
+        this.table.foreach{ case(id, ref) =>{
+          println(s"id: $id, ref: $ref")
+        }}
         context.log.info("Updated table has been received!")
         this
       case TestTable =>
@@ -266,12 +282,10 @@ object ServerManager{
     Thread.sleep(2000)
     flatChordRing.foreach{
       case(_, ref) =>{
-      //  ref ! UpdateTable
+        //ref ! UpdateTable
       }
     }
-    flatChordRing.last._2 ! UpdateTable
-    Thread.sleep(500)
-    flatChordRing.last._2 ! TestTable
+    //flatChordRing.head._2 ! UpdateTable
   }
 
   def apply(): Behavior[Command] = {
@@ -303,8 +317,6 @@ object ServerManager{
 object Driver extends App {
   val system = ActorSystem(ServerManager(), "chord")
   // Add 5 servers to the system
-  system ! ServerManager.Add(5)
+  system ! ServerManager.Add(1000)
   // Sleep for 7 seconds and then send shutdown signal
-  Thread.sleep(7000)
-  system ! ServerManager.Shutdown
 }
