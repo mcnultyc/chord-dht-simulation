@@ -59,7 +59,7 @@ object Server{
   case object UpdateTable extends Command
   final case class UpdatedTable(table: List[(BigInt, ActorRef[Command])]) extends Command
   // Commands to insert and lookup data
-  final case class Insert(metadata: FileMetadata) extends Command
+  final case class Insert(filename: String, size: Int) extends Command
   final case class Lookup(key: BigInt) extends Command
   final case class FoundData(data: String) extends Command
 
@@ -123,7 +123,7 @@ class Server(context: ActorContext[Server.Command])
 
         Behaviors.receiveMessage{
           case FoundSuccessor(successor, id) => {
-            successor ! Insert(new FileMetadata(filename, size))
+            successor ! Insert(filename, size)
             Behaviors.stopped
           }
           case _ => Behaviors.unhandled
@@ -253,6 +253,11 @@ class Server(context: ActorContext[Server.Command])
         this
       case FoundSuccessor(successor,id) =>
         context.log.info(s"Found successor: $successor")
+        this
+      case Insert(filename, size) =>
+        val key = MD5.hash(filename)
+        // TODO if key > prev and key <= id, then insert at this node
+        // TODO otherwise route request through insertFile function
         this
     }
   }
