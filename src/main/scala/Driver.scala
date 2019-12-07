@@ -98,7 +98,7 @@ class Server(context: ActorContext[Server.Command])
   private var id: BigInt = MD5.hash(context.self.toString)
   // Store data keys in a set
   private val data = mutable.Set[FileMetadata]()
-  private var printLog = true
+  private var printLog = false
   // Ids for finger table entries, n+2^{k-1} for 1 <= k <= 128
   private val tableIds =
     (0 to 127).map(i =>{
@@ -115,15 +115,23 @@ class Server(context: ActorContext[Server.Command])
   def closestPrecedingNode(id: BigInt): ActorRef[Command] ={
     // TODO check finger table for closest preceding node
     if(table != null){
+      table.reverse.foreach{case (i, ref) => println((i, ref))}
       // Iterate through finger from largest to smallest key
       table.reverse.foreach{case (fingerId, ref) =>{
         // Select node with highest key that can fit the id given
+        /*
         if(fingerId >= this.id && fingerId <= id){
           //context.log.info(s"Closest preceding node: $ref")
           return ref
         }
+         */
+        if(fingerId <= id){
+          context.log.info(s"Closest preceding node: $ref")
+          return ref
+        }
       }}
     }
+    Thread.sleep(25000)
     next // just use next to lookup nodes
   }
 
@@ -251,7 +259,7 @@ class Server(context: ActorContext[Server.Command])
   override def onMessage(msg: Command): Behavior[Command] = {
     msg match {
       case FindSuccessor(ref,id) =>
-        context.log.info(s"FIND SUCCESSOR - PREV $ref, THIS: ${context.self}")
+        //context.log.info(s"FIND SUCCESSOR - PREV $ref, THIS: ${context.self}")
         //context.log.info(s"Find successor at ${context.self}")
         // Create child session to handle successor request (concurrent)
         context.spawnAnonymous(findSuccessor(context.self, ref, id))
@@ -394,6 +402,7 @@ object ServerManager{
           case TablesUpdated =>
             val ref = chordRing.head._2
             context.log.info("************In Tables updated handler***************")
+            Thread.sleep(10000)
             context.log.info(s"FIRST: $ref")
             println(s"FILE KEY: ${MD5.hash("nailingpailin")}")
             ref ! Server.Insert("nailingpailin", 5000)
@@ -417,5 +426,6 @@ object Driver extends App {
   // Add 5 servers to the system
   system ! ServerManager.Start(5)
   // Sleep for 7 seconds and then send shutdown signal
-
+  Thread.sleep(30000)
+  system ! ServerManager.Shutdown
 }
