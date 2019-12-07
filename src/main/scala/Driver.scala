@@ -286,6 +286,7 @@ object ServerManager{
   final case class Start(numServers: Int) extends Command
   case object Shutdown extends Command
   final case class TableUpdated(server: ActorRef[Server.Command]) extends Command
+  case object TablesUpdated extends Command
   case object Test extends Command
 
   private var chordRing: List[(BigInt, ActorRef[Server.Command])] = null
@@ -320,6 +321,7 @@ object ServerManager{
             responses += 1
             if(responses == chordRing.size){
               context.log.info(s"$server has updated table!")
+              parent ! TablesUpdated
               Behaviors.stopped
             }
             else{
@@ -350,7 +352,8 @@ object ServerManager{
             chordRing = servers.sortBy(_._1).toList
             // Create chord ring from server hashes
             createChordRing(chordRing)
-
+            // Update Tables
+            context.spawnAnonymous(updateTables(context.self))
             Behaviors.same
           case Shutdown =>
             Behaviors.stopped
