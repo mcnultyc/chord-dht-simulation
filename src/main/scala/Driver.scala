@@ -38,8 +38,12 @@ class RouteMetadata{
 
 // Class to keep metadata for inserts and lookups
 class FileMetadata(filename: String, size: Int){
-
-
+  def getFilename(): String ={
+    filename
+  }
+  def getSize(): Int={
+    size
+  }
 }
 
 object Server{
@@ -93,7 +97,8 @@ class Server(context: ActorContext[Server.Command])
   // Set id as hash of context username
   private var id: BigInt = MD5.hash(context.self.toString)
   // Store data keys in a set
-  private val data = mutable.Set[String]()
+  private val data = mutable.Set[FileMetadata]()
+  private var printLog = false
   // Ids for finger table entries, n+2^{k-1} for 1 <= k <= 128
   private val tableIds =
     (0 to 127).map(i =>{
@@ -126,12 +131,14 @@ class Server(context: ActorContext[Server.Command])
   def insertFile(parent: ActorRef[Command], filename: String, size: Int): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
+        context.log.info("In insert file function")
         val key = MD5.hash(filename)
         // Find node to insert file in
         parent ! FindSuccessor(context.self, key)
 
         Behaviors.receiveMessage{
           case FoundSuccessor(successor, id) => {
+            context.log.info(s"FOUND LOCATION FOR FILE: $successor")
             // Insert file in located node
             successor ! Insert(filename, size)
             Behaviors.stopped
@@ -175,18 +182,25 @@ class Server(context: ActorContext[Server.Command])
   def findSuccessor(parent: ActorRef[Command], replyTo: ActorRef[Command], id: BigInt): Behavior[NotUsed] = {
     Behaviors
       .setup[AnyRef] { context =>
+        if(printLog)context.log.info(s"In find successor function, REF: $parent")
         // Check if in node with largest id in chord ring
         if(this.id > nextId){
           // Check if id greater than largest chord ring or
           // less than the smallest id
           if(id > this.id || id <= nextId){
-            context.log.info(s"Successor found at: $parent")
+            //context.log.info(s"Successor found at: $parent")
+            if(printLog){
+              context.log.info(s"LOCATION FOR FILE: $parent")
+            }
             replyTo ! FoundSuccessor(next, id)
             Behaviors.stopped
           }
           else{
             // Find the closest preceding node
             val node = closestPrecedingNode(id)
+            if(printLog){
+              context.log.info(s"ClOSEST PRECEDING NODE(1): $node")
+            }
             // Request successor from closest preceding node
             node ! FindSuccessor(context.self, id)
             Behaviors.receiveMessage{
@@ -203,8 +217,11 @@ class Server(context: ActorContext[Server.Command])
         else{
           // Check if id falls in range (this.id, id]
           if(id > this.id && id <= nextId){
-            context.log.info(s"Successor found at: $parent")
+            //context.log.info(s"Successor found at: $parent")
             // Forward our next to actor that requested successor
+            if(printLog){
+              context.log.info(s"FILE LOCATION: $parent")
+            }
             replyTo ! FoundSuccessor(next, id)
             // Stop child session
             Behaviors.stopped
@@ -212,6 +229,9 @@ class Server(context: ActorContext[Server.Command])
           else{
             // Find the closest preceding node
             val node = closestPrecedingNode(id)
+            if(printLog){
+              context.log.info(s"CLOSEST PRECEDING NODE(2): $node")
+            }
             // Request successor from closest preceding node
             node ! FindSuccessor(context.self, id)
             Behaviors.receiveMessage{
@@ -231,9 +251,12 @@ class Server(context: ActorContext[Server.Command])
   override def onMessage(msg: Command): Behavior[Command] = {
     msg match {
       case FindSuccessor(ref,id) =>
+        if(printLog) {
+          context.log.info(s"FIND SUCCESSOR - PREV $ref, THIS: ${context.self}")
+        }
         //context.log.info(s"Find successor at ${context.self}")
         // Create child session to handle successor request (concurrent)
-          context.spawnAnonymous(findSuccessor(context.self, ref, id))
+        context.spawnAnonymous(findSuccessor(context.self, ref, id))
         this
       case SetId(id) =>
         this.id = id
@@ -247,13 +270,14 @@ class Server(context: ActorContext[Server.Command])
         context.spawnAnonymous(updateTable(context.self, replyTo))
         this
       case UpdatedTable(table, replyTo) =>
+        println(s"ID: $id, NEXT: $nextId, PREV: $prevId")
         // Update current finger table
         this.table = table
         //println(s"*******************************ref: ${context.self}*******************************")
         this.table.foreach{ case(id, ref) =>{
           //println(s"id: $id, ref: $ref")
         }}
-        context.log.info("Updated table has been received!")
+        //context.log.info("Updated table has been received!")
         replyTo ! ServerManager.TableUpdated(context.self)
         this
       case TestTable =>
@@ -268,12 +292,25 @@ class Server(context: ActorContext[Server.Command])
         this.prevId = prevId
         this
       case FoundSuccessor(successor,id) =>
-        context.log.info(s"Found successor: $successor")
+        context.log.info(s"FOUND SUCCESSOR: $successor")
         this
       case Insert(filename, size) =>
+        printLog = true
+        context.log.info(s"STARTING AT: ${context.self}")
         val key = MD5.hash(filename)
-        // TODO if key > prev and key <= id, then insert at this node
-        // TODO otherwise route request through insertFile function
+        context.log.info(s"FILE KEY: $key")
+        // TODO bug for inserting at head
+        if(prevId > id && key <= id){
+          data += new FileMetadata(filename, size)
+          context.log.info(s"INSERT FILE AT: ${context.self}")
+        }
+        else if(key > prevId && key <= id){
+          data += new FileMetadata(filename, size)
+          context.log.info(s"INSERT FILE AT: ${context.self}")
+        }
+        else{
+          context.spawnAnonymous(insertFile(context.self, filename, size))
+        }
         this
     }
   }
@@ -297,12 +334,12 @@ object ServerManager{
     // Set prev id to be id of last node in the ring
     var prevId = chordRing.last._1
     // Set successors for nodes in chord ring
-    println(s"id: ${chordRing.last._1}")
+    //println(s"id: ${chordRing.last._1}")
     chordRing.foreach {
       case (id, ref) => {
         prev ! Server.SetSuccessor(ref, id)
         ref ! Server.SetPrev(prev, prevId)
-        println(s"prev: $prev, next: $ref, id: $id")
+        println(s"REF: $ref, ID: $id")
         prev = ref
         prevId = id
       }
@@ -312,15 +349,17 @@ object ServerManager{
   def updateTables(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
-        chordRing.foreach{ case(_, ref) =>{
-          ref ! Server.UpdateTable(context.self)
-        }}
+        // Send update table command to all servers
+        chordRing.foreach{ case(_, ref) =>ref ! Server.UpdateTable(context.self)}
         var responses = 0
         Behaviors.receiveMessage{
           case TableUpdated(server) => {
+            // Update count for responses
             responses += 1
+            // Check if all servers have responded
             if(responses == chordRing.size){
-              context.log.info(s"$server has updated table!")
+              context.log.info(s"Servers have updated tables!")
+              // Inform parent that tables have all been created
               parent ! TablesUpdated
               Behaviors.stopped
             }
@@ -330,7 +369,6 @@ object ServerManager{
           }
           case _ => Behaviors.unhandled
         }
-        Behaviors.stopped
       }.narrow[NotUsed]
   }
 
@@ -355,6 +393,20 @@ object ServerManager{
             // Update Tables
             context.spawnAnonymous(updateTables(context.self))
             Behaviors.same
+          case TablesUpdated =>
+            val ref = chordRing.head._2
+            context.log.info("************In Tables updated handler***************")
+            context.log.info(s"FIRST: $ref")
+            println(s"FILE KEY: ${MD5.hash("nailingpailin")}")
+            ref ! Server.Insert("nailingpailin", 5000)
+            //context.self ! Test
+            Behaviors.same
+          case Test =>
+            val last = chordRing.last._2
+            val first = chordRing.head._2
+            context.log.info(s"LAST: $last")
+            last ! Server.FindSuccessor(first, MD5.hash("nailingpailin"))
+            Behaviors.same
           case Shutdown =>
             Behaviors.stopped
         }
@@ -365,6 +417,7 @@ object ServerManager{
 object Driver extends App {
   val system = ActorSystem(ServerManager(), "chord")
   // Add 5 servers to the system
-  system ! ServerManager.Start(1000)
+  system ! ServerManager.Start(5)
   // Sleep for 7 seconds and then send shutdown signal
+
 }
