@@ -98,7 +98,7 @@ class Server(context: ActorContext[Server.Command])
   private var id: BigInt = MD5.hash(context.self.toString)
   // Store data keys in a set
   private val data = mutable.Set[FileMetadata]()
-  private var printLog = false
+  private var printLog = true
   // Ids for finger table entries, n+2^{k-1} for 1 <= k <= 128
   private val tableIds =
     (0 to 127).map(i =>{
@@ -131,7 +131,7 @@ class Server(context: ActorContext[Server.Command])
   def insertFile(parent: ActorRef[Command], filename: String, size: Int): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
-        context.log.info("In insert file function")
+        context.log.info(s"IN INSERT FILE FUNCTION: ${context.self}")
         val key = MD5.hash(filename)
         // Find node to insert file in
         parent ! FindSuccessor(context.self, key)
@@ -182,7 +182,7 @@ class Server(context: ActorContext[Server.Command])
   def findSuccessor(parent: ActorRef[Command], replyTo: ActorRef[Command], id: BigInt): Behavior[NotUsed] = {
     Behaviors
       .setup[AnyRef] { context =>
-        if(printLog)context.log.info(s"In find successor function, REF: $parent")
+        if(printLog)context.log.info(s"IN FIND SUCCESSOR, PARENT: $parent, REF: ${context.self}")
         // Check if in node with largest id in chord ring
         if(this.id > nextId){
           // Check if id greater than largest chord ring or
@@ -251,9 +251,7 @@ class Server(context: ActorContext[Server.Command])
   override def onMessage(msg: Command): Behavior[Command] = {
     msg match {
       case FindSuccessor(ref,id) =>
-        if(printLog) {
-          context.log.info(s"FIND SUCCESSOR - PREV $ref, THIS: ${context.self}")
-        }
+        context.log.info(s"FIND SUCCESSOR - PREV $ref, THIS: ${context.self}")
         //context.log.info(s"Find successor at ${context.self}")
         // Create child session to handle successor request (concurrent)
         context.spawnAnonymous(findSuccessor(context.self, ref, id))
