@@ -7,11 +7,12 @@ import scala.concurrent.duration._
 import scala.collection.mutable
 import java.security.MessageDigest
 
-import Server.{FindSuccessor, TestTable, UpdateTable}
+import Server.{FindSuccessor, TestTable, UpdateTable, UpdatedTable}
 import akka.NotUsed
 import javax.xml.bind.annotation.adapters.HexBinaryAdapter
 
 import scala.compat.java8.FutureConverters.CompletionStageOps
+import scala.concurrent.Await
 
 object MD5{
   private val hashAlgorithm = MessageDigest.getInstance("MD5")
@@ -51,13 +52,17 @@ object Server{
   final case class SetSuccessor(next: ActorRef[Server.Command], nextId: BigInt) extends Command
   final case class FindSuccessor(replyTo: ActorRef[Server.Command], id: BigInt) extends Command
   final case class FoundSuccessor(successor: ActorRef[Command], id: BigInt) extends Command
+
+  final case class SetPrev(prev: ActorRef[Server.Command], prevId: BigInt) extends Command
+
   // Commands to update server ids
   final case class SetId(id: BigInt) extends Command
   final case class GetId(replyTo: ActorRef[Command]) extends Command
   final case class RespondId(id: BigInt) extends Command
   // Commands to update table and respond updated table
-  case object UpdateTable extends Command
-  final case class UpdatedTable(table: List[(BigInt, ActorRef[Command])]) extends Command
+  final case class UpdateTable(replyTo: ActorRef[ServerManager.Command]) extends Command
+  final case class UpdatedTable(table: List[(BigInt, ActorRef[Command])],
+                                replyTo: ActorRef[ServerManager.Command]) extends Command
   // Commands to insert and lookup data
   final case class Insert(filename: String, size: Int) extends Command
   final case class Lookup(key: BigInt) extends Command
@@ -79,6 +84,10 @@ class Server(context: ActorContext[Server.Command])
   private var next: ActorRef[Server.Command] = null;
   // Cache id of next server in the chord ring
   private var nextId: BigInt = 0
+  // Set previous node in chord ring
+  private var prev: ActorRef[Server.Command] = null
+  // Cache id of the previous server in the chord ring
+  private var prevId: BigInt = 0
   // Finger table used for routing messages
   private var table: List[(BigInt, ActorRef[Command])] = null
   // Set id as hash of context username
@@ -118,11 +127,12 @@ class Server(context: ActorContext[Server.Command])
     Behaviors
       .setup[AnyRef]{ context =>
         val key = MD5.hash(filename)
-
+        // Find node to insert file in
         parent ! FindSuccessor(context.self, key)
 
         Behaviors.receiveMessage{
           case FoundSuccessor(successor, id) => {
+            // Insert file in located node
             successor ! Insert(filename, size)
             Behaviors.stopped
           }
@@ -132,9 +142,9 @@ class Server(context: ActorContext[Server.Command])
   }
 
 
-  def updateTable(parent: ActorRef[Command]): Behavior[NotUsed] ={
+  def updateTable(parent: ActorRef[Command], replyTo: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
-      .setup[AnyRef] { context =>
+      .setup[AnyRef]{ context =>
         // Counter for the number of responses
         var responses = 0
         // Request successor for each entry in finger table through immediate next
@@ -147,8 +157,9 @@ class Server(context: ActorContext[Server.Command])
             // Check if all requests have been responded too
             if(responses == tableIds.size){
               // Send updated table to be processed
-              parent ! UpdatedTable(table.sortBy(_._1).toList)
+              parent ! UpdatedTable(table.sortBy(_._1).toList, replyTo)
               Behaviors.stopped
+
             }
             else{
               Behaviors.same
@@ -231,18 +242,19 @@ class Server(context: ActorContext[Server.Command])
         this.next = next
         this.nextId = nextId
         this
-      case UpdateTable =>
+      case UpdateTable(replyTo) =>
         // TODO verify that finger table entries are correct
-        context.spawnAnonymous(updateTable(context.self))
+        context.spawnAnonymous(updateTable(context.self, replyTo))
         this
-      case UpdatedTable(table) =>
+      case UpdatedTable(table, replyTo) =>
         // Update current finger table
         this.table = table
-        println(s"*******************************ref: ${context.self}*******************************")
+        //println(s"*******************************ref: ${context.self}*******************************")
         this.table.foreach{ case(id, ref) =>{
-          println(s"id: $id, ref: $ref")
+          //println(s"id: $id, ref: $ref")
         }}
         context.log.info("Updated table has been received!")
+        replyTo ! ServerManager.TableUpdated(context.self)
         this
       case TestTable =>
         val testId = BigInt("333658623028670999750805885164791678408")
@@ -250,6 +262,10 @@ class Server(context: ActorContext[Server.Command])
         this
       case GetId(replyTo) =>
         replyTo ! RespondId(id)
+        this
+      case SetPrev(prev, prevId) =>
+        this.prev = prev
+        this.prevId = prevId
         this
       case FoundSuccessor(successor,id) =>
         context.log.info(s"Found successor: $successor")
@@ -266,31 +282,54 @@ class Server(context: ActorContext[Server.Command])
 
 object ServerManager{
   sealed trait Command
-  final case class Add(total: Int) extends Command
-  case object CreateTables extends Command
+  // Command to start the datacenter
+  final case class Start(numServers: Int) extends Command
   case object Shutdown extends Command
+  final case class TableUpdated(server: ActorRef[Server.Command]) extends Command
+  case object Test extends Command
 
-  def createChordRing(servers: List[(BigInt, ActorRef[Server.Command])]): Unit ={
-    // Sort chord ring by server ids
-    val flatChordRing = servers.sortBy(_._1)
+  private var chordRing: List[(BigInt, ActorRef[Server.Command])] = null
+
+  def createChordRing(chordRing: List[(BigInt, ActorRef[Server.Command])]): Unit ={
     // Set prev of first node to be the last node (circular list)
-    var prev = flatChordRing.last._2
+    var prev = chordRing.last._2
+    // Set prev id to be id of last node in the ring
+    var prevId = chordRing.last._1
     // Set successors for nodes in chord ring
-    println(s"id: ${flatChordRing.last._1}")
-    flatChordRing.foreach{
-      case (id, ref) =>{
+    println(s"id: ${chordRing.last._1}")
+    chordRing.foreach {
+      case (id, ref) => {
         prev ! Server.SetSuccessor(ref, id)
+        ref ! Server.SetPrev(prev, prevId)
         println(s"prev: $prev, next: $ref, id: $id")
         prev = ref
+        prevId = id
       }
     }
-    Thread.sleep(2000)
-    flatChordRing.foreach{
-      case(_, ref) =>{
-        //ref ! UpdateTable
-      }
-    }
-    //flatChordRing.head._2 ! UpdateTable
+  }
+
+  def updateTables(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
+    Behaviors
+      .setup[AnyRef]{ context =>
+        chordRing.foreach{ case(_, ref) =>{
+          ref ! Server.UpdateTable(context.self)
+        }}
+        var responses = 0
+        Behaviors.receiveMessage{
+          case TableUpdated(server) => {
+            responses += 1
+            if(responses == chordRing.size){
+              context.log.info(s"$server has updated table!")
+              Behaviors.stopped
+            }
+            else{
+              Behaviors.same
+            }
+          }
+          case _ => Behaviors.unhandled
+        }
+        Behaviors.stopped
+      }.narrow[NotUsed]
   }
 
   def apply(): Behavior[Command] = {
@@ -298,7 +337,7 @@ object ServerManager{
     Behaviors.receive[Command]{
       (context, msg) =>
         msg match {
-          case Add(total) =>
+          case Start(total) =>
             val servers =
               (1 to total).map(i => {
                 // Hash server name to create id
@@ -307,10 +346,11 @@ object ServerManager{
                 ref ! Server.SetId(id)
                 (id, ref)
               })
+            // Sort chord ring by server ids
+            chordRing = servers.sortBy(_._1).toList
             // Create chord ring from server hashes
-            createChordRing(servers.toList)
-            Behaviors.same
-          case CreateTables =>
+            createChordRing(chordRing)
+
             Behaviors.same
           case Shutdown =>
             Behaviors.stopped
@@ -322,6 +362,6 @@ object ServerManager{
 object Driver extends App {
   val system = ActorSystem(ServerManager(), "chord")
   // Add 5 servers to the system
-  system ! ServerManager.Add(1000)
+  system ! ServerManager.Start(1000)
   // Sleep for 7 seconds and then send shutdown signal
 }
