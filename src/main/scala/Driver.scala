@@ -1,20 +1,14 @@
+import Server.Lookup
+
 import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
-import akka.util.Timeout
-
-import scala.util.{Failure, Success}
-import scala.concurrent.duration._
-import scala.collection.mutable
-import java.security.MessageDigest
-
-import Server.{FindSuccessor, Lookup, TestTable, UpdateTable, UpdatedTable}
 import akka.NotUsed
+
+import java.security.MessageDigest
 import javax.xml.bind.annotation.adapters.HexBinaryAdapter
 
+import scala.collection.mutable
 import scala.util.Random.shuffle
-
-import scala.compat.java8.FutureConverters.CompletionStageOps
-import scala.concurrent.Await
 
 object MD5{
   private val hashAlgorithm = MessageDigest.getInstance("MD5")
@@ -59,7 +53,7 @@ class TestChord{
     val ring = List((0, 100, 10))++(10 to 90 by 10).map(x=>(x, x-10,x+10))++List((100, 90, 0))
     val nexts = mutable.Map[Int, Int]()
     (0 to 90 by 10).foreach(x => {
-      (x+1 to x+10).foreach(y =>{
+      (x+1 to x+10).foreach(y => {
         nexts(y) = x+10
       })
     })
@@ -67,13 +61,13 @@ class TestChord{
     nexts(0) = 0
     var id = ring.head._1
     val passed =
-    ring.tail.map{case(node,prev, next) =>{
-      id += 1
-      val res = select(id, node, prev, next)
-      val temp = id
-      id = node
-      if(nexts(temp) != res) 0 else 1
-    }}.sum
+      ring.tail.map{case(node,prev, next) =>
+        id += 1
+        val res = select(id, node, prev, next)
+        val temp = id
+        id = node
+        if(nexts(temp) != res) 0 else 1
+      }.sum
 
     val edgeCases = if(select(101,0,100, 10) == 0) 1 else 0
 
@@ -92,10 +86,10 @@ class RouteMetadata{
 
 // Class to keep metadata for inserts and lookups
 class FileMetadata(filename: String, size: Int){
-  def getFilename(): String ={
+  def getFilename: String ={
     filename
   }
-  def getSize(): Int={
+  def getSize: Int ={
     size
   }
 }
@@ -137,30 +131,30 @@ object Server{
   case object TestTable extends Command
 
   // Largest value created by a 128 bit hash such as MD5
-  val md5Max = BigInt(1) << 128
+  val md5Max: BigInt = BigInt(1) << 128
 
   def apply(): Behavior[Command] =
     Behaviors.setup(context => new Server(context))
 }
 
 class Server(context: ActorContext[Server.Command])
-        extends AbstractBehavior[Server.Command](context) {
+  extends AbstractBehavior[Server.Command](context) {
   import Server._
   // Actor reference to the next server in the chord ring
-  private var next: ActorRef[Server.Command] = null;
+  private var next: ActorRef[Server.Command] = _
   // Cache id of next server in the chord ring
   private var nextId: BigInt = 0
   // Set previous node in chord ring
-  private var prev: ActorRef[Server.Command] = null
+  private var prev: ActorRef[Server.Command] = _
   // Cache id of the previous server in the chord ring
   private var prevId: BigInt = 0
   // Finger table used for routing messages
-  private var table: List[(BigInt, ActorRef[Command])] = null
+  private var table: List[(BigInt, ActorRef[Command])] = _
   // Set id as hash of context username
   private var id: BigInt = MD5.hash(context.self.toString)
   // Store data keys in a set
   private val data = mutable.Map[String, FileMetadata]()
-  
+
   // Ids for finger table entries, n+2^{k-1} for 1 <= k <= 128
   private val tableIds =
     (0 to 127).map(i =>{
@@ -170,7 +164,7 @@ class Server(context: ActorContext[Server.Command])
         n -= md5Max
       }
       n
-  })
+    })
 
   /* Find the node in the finger table closest to the ID.
    */
@@ -188,12 +182,11 @@ class Server(context: ActorContext[Server.Command])
         parent ! FindSuccessor(context.self, key, -1)
 
         Behaviors.receiveMessage{
-          case FoundSuccessor(successor, id, index) => {
+          case FoundSuccessor(successor, id, index) =>
             //context.log.info(s"FOUND LOCATION FOR FILE: $successor")
             // Get file from selected node and forward reply
             successor ! GetFile(filename, replyTo)
             Behaviors.stopped
-          }
           case _ => Behaviors.unhandled
         }
       }.narrow[NotUsed]
@@ -208,12 +201,11 @@ class Server(context: ActorContext[Server.Command])
         parent ! FindSuccessor(context.self, key, -1)
 
         Behaviors.receiveMessage{
-          case FoundSuccessor(successor, id, index) => {
+          case FoundSuccessor(successor, id, index) =>
             //context.log.info(s"FOUND LOCATION FOR FILE: $successor")
             // Insert file in located node
             successor ! Insert(filename, size, replyTo)
             Behaviors.stopped
-          }
           case _ => Behaviors.unhandled
         }
       }.narrow[NotUsed]
@@ -233,7 +225,7 @@ class Server(context: ActorContext[Server.Command])
         })
         val replies = mutable.ListBuffer[(ActorRef[Command], BigInt, Int)]()
         Behaviors.receiveMessage{
-          case FoundSuccessor(successor, id, index) => {
+          case FoundSuccessor(successor, id, index) =>
             responses += 1
             replies += ((successor, id, index))
             // Check if all requests have been responded too
@@ -247,7 +239,6 @@ class Server(context: ActorContext[Server.Command])
             else{
               Behaviors.same
             }
-          }
           case _ => Behaviors.unhandled
         }
       }.narrow[NotUsed]
@@ -289,12 +280,11 @@ class Server(context: ActorContext[Server.Command])
           // Case where we route request
           node ! FindSuccessor(context.self, id, index)
           Behaviors.receiveMessage{
-            case FoundSuccessor(successor, id, index) => {
+            case FoundSuccessor(successor, id, index) =>
               // Forward successor to actor that requested successor
               replyTo ! FoundSuccessor(successor,id, index)
               // Stop child session
               Behaviors.stopped
-            }
             case _ => Behaviors.unhandled
           }
         }
@@ -394,9 +384,9 @@ object ServerManager{
 
   final case class FileInserted(filename: String) extends Command
   final case class FoundFile(data: FileMetadata) extends Command
-   final case class FileNotFound(filename: String) extends Command 
+  final case class FileNotFound(filename: String) extends Command
 
-  private var chordRing: List[(BigInt, ActorRef[Server.Command])] = null
+  private var chordRing: List[(BigInt, ActorRef[Server.Command])] = _
 
   def testInserts(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
@@ -404,7 +394,7 @@ object ServerManager{
         val files = (0 to 300).map(x => s"FILE#$x").toList
         val nodes = chordRing.map(x => x._2).toList
         context.log.info(s"INSERTING ${files.size} FILE(S)...")
-        // Send update table command to all servers 
+        // Send update table command to all servers
         files.foreach(x =>{
           val node = shuffle(nodes).head
           Thread.sleep(20)
@@ -417,14 +407,14 @@ object ServerManager{
         // Counter for responses received
         var responses = 0
         Behaviors.receiveMessage{
-          case FileInserted(filename) => {
+          case FileInserted(filename) =>
             inserted += filename
             // Update count for responses
             responses += 1
             // Check if all servers have inserted files
             if(responses == files.size){
               // Check that the correct files were reported as successfully inserted
-              val correct = files.map(x => if(inserted.contains(x)==true) 1 else 0).sum
+              val correct = files.map(x => if(inserted.contains(x)) 1 else 0).sum
               if(correct == files.size){
                 context.log.info(s"ALL ${files.size} FILES HAVE BEEN INSERTED!!")
                 Thread.sleep(2000)
@@ -445,14 +435,13 @@ object ServerManager{
             else{
               Behaviors.same
             }
-          }
-          case FoundFile(metadata) =>{
-            found += metadata.getFilename()
+          case FoundFile(metadata) =>
+            found += metadata.getFilename
             responses += 1
             // Check if all files have been found
             if(responses == files.size){
               // Check that the correct files were reported as found
-              val correct = files.map(x => if(found.contains(x)==true) 1 else 0).sum
+              val correct = files.map(x => if(found.contains(x)) 1 else 0).sum
               if(correct == files.size){
                 context.log.info(s"ALL ${files.size} FILES HAVE BEEN FOUND!!")
               }
@@ -461,11 +450,9 @@ object ServerManager{
             else{
               Behaviors.same
             }
-          }
-          case FileNotFound(filename) => {
+          case FileNotFound(filename) =>
             context.log.info(s"ERROR: FILE NOT FOUND [$filename]")
             Behaviors.stopped
-          }
           case _ => Behaviors.unhandled
         }
       }.narrow[NotUsed]
@@ -479,13 +466,12 @@ object ServerManager{
     // Set successors for nodes in chord ring
     //println(s"id: ${chordRing.last._1}")
     chordRing.foreach {
-      case (id, ref) => {
+      case (id, ref) =>
         prev ! Server.SetSuccessor(ref, id)
         ref ! Server.SetPrev(prev, prevId)
         println(s"REF: $ref, ID: $id")
         prev = ref
         prevId = id
-      }
     }
   }
 
@@ -497,7 +483,7 @@ object ServerManager{
         chordRing.foreach{ case(_, ref) =>ref ! Server.UpdateTable(context.self)}
         var responses = 0
         Behaviors.receiveMessage{
-          case TableUpdated(server) => {
+          case TableUpdated(server) =>
             // Update count for responses
             responses += 1
             // Check if all servers have responded
@@ -510,7 +496,6 @@ object ServerManager{
             else{
               Behaviors.same
             }
-          }
           case _ => Behaviors.unhandled
         }
       }.narrow[NotUsed]
@@ -552,7 +537,7 @@ object ServerManager{
             last ! Lookup("nailingpailin", context.self)
             Behaviors.same
           case FoundFile(metadata) =>
-            context.log.info(s"FOUND FILE!!, FILENAME: ${metadata.getFilename()}, SIZE: ${metadata.getSize()}")
+            context.log.info(s"FOUND FILE!!, FILENAME: ${metadata.getFilename}, SIZE: ${metadata.getSize}")
             Behaviors.same
           case Test =>
             val last = chordRing.last._2
@@ -566,17 +551,6 @@ object ServerManager{
     }
   }
 }
-
-/*
-object Driver{
-
-  def main(args: Array[String]): Unit = {
-    val tests = new TestChord()
-    tests.runTest()
-  }
-}
-*/
-
 
 object Driver extends App {
   val system = ActorSystem(ServerManager(), "chord")
