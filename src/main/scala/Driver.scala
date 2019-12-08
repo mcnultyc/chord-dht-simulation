@@ -191,8 +191,16 @@ class Server(context: ActorContext[Server.Command])
     Behaviors
       .setup[AnyRef] { context =>
         if(printLog)context.log.info(s"IN FIND SUCCESSOR, PARENT: $parent, REF: ${context.self}")
-        // Check if in node with largest id in chord ring
-        if(this.id > nextId){
+
+        if(id > prevId && id <= this.id){
+          replyTo ! FoundSuccessor(parent, id)
+          Behaviors.stopped
+        }
+        else if(this.id > nextId && id <= nextId){
+          replyTo ! FoundSuccessor(parent, id)
+          Behaviors.stopped
+        }
+        else if(this.id > nextId){
           // Check if id greater than largest chord ring or
           // less than the smallest id
           if(id > this.id || id <= nextId){
