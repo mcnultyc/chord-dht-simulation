@@ -29,58 +29,6 @@ object MD5{
   }
 }
 
-class TestChord{
-
-  def select(id: Int, node: Int, prev: Int, next: Int): Int ={
-    if(prev > node && id <= node){ // Case where we insert at first node
-      node
-    }
-    else if(prev > node && id > prev){// Case where insert at first node
-      node
-    }
-    else if(id > prev && id <= node){// Case where we insert at this node
-      node
-    }
-    else if(id > node && id <= next){// Case where we insert at next node
-      next
-    }
-    else if(node > next && id <= next){// Case where we insert at first node
-      next
-    }
-    else if(node > next && id > node){// Case where we insert at first node
-      next
-    }
-    else{
-      -1
-    }
-  }
-
-  def runTest(): Unit ={
-    val ring = List((0, 100, 10))++(10 to 90 by 10).map(x=>(x, x-10,x+10))++List((100, 90, 0))
-    val nexts = mutable.Map[Int, Int]()
-    (0 to 90 by 10).foreach(x => {
-      (x+1 to x+10).foreach(y =>{
-        nexts(y) = x+10
-      })
-    })
-    (101 to 200).foreach(x => nexts(x) = 0)
-    nexts(0) = 0
-    var id = ring.head._1
-    val passed =
-    ring.tail.map{case(node,prev, next) =>{
-      id += 1
-      val res = select(id, node, prev, next)
-      val temp = id
-      id = node
-      if(nexts(temp) != res) 0 else 1
-    }}.sum
-
-    val edgeCases = if(select(101,0,100, 10) == 0) 1 else 0
-
-    println(passed+edgeCases)
-  }
-}
-
 // Class to keep metadata for routing requests
 class RouteMetadata{
   private var hops: Int = 0
@@ -106,7 +54,6 @@ object Server{
   case object Start extends Command
   case object Pause extends Command
   // Commands to update successors and handle routing requests
-  final case class GetSuccessor(id: BigInt) extends Command
   final case class SetSuccessor(next: ActorRef[Server.Command], nextId: BigInt) extends Command
   final case class FindSuccessor(replyTo: ActorRef[Server.Command], id: BigInt, index: Int) extends Command
   final case class FoundSuccessor(successor: ActorRef[Command], id: BigInt, index: Int) extends Command
@@ -129,8 +76,6 @@ object Server{
 
   //final case class FoundFile(data: FileMetadata) extends Command
   final case class FileNotFound(filename: String) extends Command
-
-  final case class FoundData(data: String) extends Command
 
 
 
@@ -162,15 +107,7 @@ class Server(context: ActorContext[Server.Command])
   private val data = mutable.Map[String, FileMetadata]()
   
   // Ids for finger table entries, n+2^{k-1} for 1 <= k <= 128
-  private val tableIds =
-    (0 to 127).map(i =>{
-      var n = this.id + (BigInt(1) << i)
-      // Values larger than 2^128 are reduced by 2^128 (quick mod)
-      if(n > md5Max){
-        n -= md5Max
-      }
-      n
-  })
+  var tableIds: List[BigInt] = null
 
   /* Find the node in the finger table closest to the ID.
    */
@@ -182,14 +119,12 @@ class Server(context: ActorContext[Server.Command])
   def lookupFile(parent: ActorRef[Command], replyTo: ActorRef[ServerManager.Command], filename: String, size: Int): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
-        //context.log.info(s"IN LOOKUP FILE FUNCTION: ${context.self}")
         val key = MD5.hash(filename)
         // Find node that should have file
         parent ! FindSuccessor(context.self, key, -1)
 
         Behaviors.receiveMessage{
           case FoundSuccessor(successor, id, index) => {
-            //context.log.info(s"FOUND LOCATION FOR FILE: $successor")
             // Get file from selected node and forward reply
             successor ! GetFile(filename, replyTo)
             Behaviors.stopped
@@ -202,14 +137,12 @@ class Server(context: ActorContext[Server.Command])
   def insertFile(parent: ActorRef[Command], replyTo: ActorRef[ServerManager.Command], filename: String, size: Int): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
-        //context.log.info(s"IN INSERT FILE FUNCTION: ${context.self}")
         val key = MD5.hash(filename)
         // Find node to insert file in
         parent ! FindSuccessor(context.self, key, -1)
 
         Behaviors.receiveMessage{
           case FoundSuccessor(successor, id, index) => {
-            //context.log.info(s"FOUND LOCATION FOR FILE: $successor")
             // Insert file in located node
             successor ! Insert(filename, size, replyTo)
             Behaviors.stopped
@@ -304,20 +237,29 @@ class Server(context: ActorContext[Server.Command])
   override def onMessage(msg: Command): Behavior[Command] = {
     msg match {
       case FindSuccessor(ref, id, index) =>
-        //context.log.info(s"FIND SUCCESSOR - PREV $ref, THIS: ${context.self}")
-        //context.log.info(s"Find successor at ${context.self}")
         // Create child session to handle successor request (concurrent)
         context.spawnAnonymous(findSuccessor(context.self, ref, id, index))
         this
       case SetId(id) =>
         this.id = id
+        // Create table ids for server's finger table
+        tableIds =
+          (0 to 127).map(i =>{
+            // Set n = id + 2^i
+            var n = this.id + (BigInt(1) << i)
+            // Values larger than 2^128 are reduced by 2^128 (quick mod)
+            if(n > md5Max){
+              n -= md5Max
+            }
+            n
+        }).toList
+
         this
       case SetSuccessor(next, nextId) =>
         this.next = next
         this.nextId = nextId
         this
       case UpdateTable(replyTo) =>
-        // TODO verify that finger table entries are correct
         context.spawnAnonymous(updateTable(context.self, replyTo))
         this
       case UpdatedTable(table, replyTo) =>
@@ -337,7 +279,6 @@ class Server(context: ActorContext[Server.Command])
         context.log.info(s"FOUND SUCCESSOR: $successor")
         this
       case Lookup(filename, replyTo) =>
-        //context.log.info(s"LOOKING UP FILE: $filename")
         // Route request to lookup file
         context.spawnAnonymous(lookupFile(context.self, replyTo, filename, 10))
         this
@@ -345,36 +286,30 @@ class Server(context: ActorContext[Server.Command])
         // Check if the current node has the file requested
         val metadata = data.getOrElse(filename, null)
         if(metadata != null){
-          //context.log.info(s"FOUND FILE AT: ${context.self}")
           // Respond with the file metadata
           replyTo ! ServerManager.FoundFile(metadata)
         }
         else{
-          //context.log.info(s"FILE NOT FOUND AT: ${context.self}")
           // Respond file not found
           replyTo ! ServerManager.FileNotFound(filename)
         }
         this
       case Insert(filename, size, replyTo) =>
         val key = MD5.hash(filename)
-        //context.log.info(s"FILE KEY: $key")
+        // Cases for inserting at this node
         if(prevId > id && key <= id){
           data(filename) = new FileMetadata(filename, size)
-          //context.log.info(s"INSERT FILE AT: ${context.self}, ID: $id")
           replyTo ! ServerManager.FileInserted(filename)
         }
         else if(prevId > id && key > prevId){
           data(filename) = new FileMetadata(filename, size)
-          //context.log.info(s"INSERT FILE AT: ${context.self}, ID: $id")
           replyTo ! ServerManager.FileInserted(filename)
         }
         else if(key > prevId && key <= id){
           data(filename) = new FileMetadata(filename, size)
-          //context.log.info(s"INSERT FILE AT: ${context.self}")
           replyTo ! ServerManager.FileInserted(filename)
         }
         else{
-          //context.log.info(s"ROUTING REQUEST THROUGH: ${context.self}, ID: $id")
           context.spawnAnonymous(insertFile(context.self, replyTo, filename, size))
         }
         this
@@ -398,6 +333,7 @@ object ServerManager{
 
   private var chordRing: List[(BigInt, ActorRef[Server.Command])] = null
 
+  
   def testInserts(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
@@ -477,7 +413,6 @@ object ServerManager{
     // Set prev id to be id of last node in the ring
     var prevId = chordRing.last._1
     // Set successors for nodes in chord ring
-    //println(s"id: ${chordRing.last._1}")
     chordRing.foreach {
       case (id, ref) => {
         prev ! Server.SetSuccessor(ref, id)
