@@ -198,6 +198,52 @@ class Server(context: ActorContext[Server.Command])
   def findSuccessor(parent: ActorRef[Command], replyTo: ActorRef[Command], id: BigInt, index: Int): Behavior[NotUsed] = {
     Behaviors
       .setup[AnyRef] { context =>
+
+        if(prevId > this.id && id <= this.id){ // Case where we insert at first node
+          // TODO here
+          replyTo ! FoundSuccessor(parent, id, index)
+          Behaviors.stopped
+        }
+        else if(prevId > this.id && id > prevId){// Case where insert at first node
+          // TODO here
+          replyTo ! FoundSuccessor(parent, id, index)
+          Behaviors.stopped
+        }
+        else if(id > prevId && id <= this.id){// Case where we insert at this node
+          // TODO here
+          replyTo ! FoundSuccessor(parent, id, index)
+          Behaviors.stopped
+        }
+        else if(id > this.id && id <= nextId){// Case where we insert at next node
+          // TODO next
+          replyTo ! FoundSuccessor(next, id, index)
+          Behaviors.stopped
+        }
+        else if(this.id > nextId && id <= nextId){// Case where we insert at first node
+          // TODO next
+          replyTo ! FoundSuccessor(next, id, index)
+          Behaviors.stopped
+        }
+        else if(this.id > nextId && id > this.id){// Case where we insert at first node
+          // TODO next
+          replyTo ! FoundSuccessor(next, id, index)
+          Behaviors.stopped
+        }
+        else{
+          // Case where we route request
+          next ! FindSuccessor(context.self, id, index)
+          Behaviors.receiveMessage{
+            case FoundSuccessor(successor, id, index) => {
+              // Forward successor to actor that requested successor
+              replyTo ! FoundSuccessor(successor,id, index)
+              // Stop child session
+              Behaviors.stopped
+            }
+            case _ => Behaviors.unhandled
+          }
+        }
+
+        /*
         if(printLog)context.log.info(s"IN FIND SUCCESSOR, PARENT: $parent, REF: ${context.self}")
 
         if(id > prevId && id <= this.id){
@@ -205,7 +251,7 @@ class Server(context: ActorContext[Server.Command])
           Behaviors.stopped
         }
         else if(this.id > nextId && id <= nextId){
-          replyTo ! FoundSuccessor(parent, id, index)
+          replyTo ! FoundSuccessor(next, id, index)
           Behaviors.stopped
         }
         else if(this.id > nextId){
@@ -269,6 +315,7 @@ class Server(context: ActorContext[Server.Command])
             }
           }
         }
+        */
       }.narrow[NotUsed]
   }
 
@@ -298,12 +345,12 @@ class Server(context: ActorContext[Server.Command])
 
         val first = table.head._2
         if(first != next){
-          context.log.info("houston we have problem :(((((")
+          this.table = List[(BigInt, ActorRef[Command])]((table.head._1, first))
+          //context.log.info(s"ERROR: REF: ${context.self}, ACTUAL NEXT: $next, TABLE NEXT: $first")
         }
         else{
-          context.log.info("YES WE DID IT")
+          //context.log.info("YES WE DID IT")
         }
-
 
         //println(s"*******************************ref: ${context.self}*******************************")
         this.table.foreach{ case(id, ref) =>{
@@ -431,7 +478,7 @@ object ServerManager{
             Thread.sleep(10000)
             context.log.info(s"FIRST: $ref")
             println(s"FILE KEY: ${MD5.hash("nailingpailin")}")
-            //ref ! Server.Insert("nailingpailin", 5000)
+            ref ! Server.Insert("nailingpailin", 5000)
             //context.self ! Test
             Behaviors.same
           case Test =>
@@ -450,7 +497,7 @@ object ServerManager{
 object Driver extends App {
   val system = ActorSystem(ServerManager(), "chord")
   // Add 5 servers to the system
-  system ! ServerManager.Start(5)
+  system ! ServerManager.Start(100)
   // Sleep for 7 seconds and then send shutdown signal
   Thread.sleep(30000)
   system ! ServerManager.Shutdown
