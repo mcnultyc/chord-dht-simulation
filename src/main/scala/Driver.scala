@@ -213,7 +213,6 @@ class Server(context: ActorContext[Server.Command])
       }.narrow[NotUsed]
   }
 
-
   def updateTable(parent: ActorRef[Command], replyTo: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
@@ -480,7 +479,6 @@ object ServerManager{
     }
   }
 
-
   def updateTables(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
@@ -518,7 +516,6 @@ object ServerManager{
         Behaviors.receiveMessage {
           case SendData(id, name) =>
             // Add server data to collection
-            //            serverData.put(id, name)
             servers += <server><id>{id}</id><name>{name}</name></server>
 
             // Update count for responses
