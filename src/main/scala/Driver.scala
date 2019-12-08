@@ -135,7 +135,7 @@ object Server{
 
   def apply(): Behavior[Command] =
     Behaviors.setup(context => new Server(context))
-}
+}//end object Server
 
 class Server(context: ActorContext[Server.Command])
   extends AbstractBehavior[Server.Command](context) {
@@ -219,7 +219,7 @@ class Server(context: ActorContext[Server.Command])
         var responses = 0
         // Request successor for each entry in finger table through immediate next
         var index = 0
-        tableIds.foreach( id => {
+        tableIds.foreach(id => {
           index += 1
           next ! FindSuccessor(context.self, id, index)
         })
@@ -275,7 +275,6 @@ class Server(context: ActorContext[Server.Command])
           Behaviors.stopped
         }
         else{
-
           val node = closestPrecedingNode(id)
           // Case where we route request
           node ! FindSuccessor(context.self, id, index)
@@ -370,8 +369,7 @@ class Server(context: ActorContext[Server.Command])
         this
     }
   }
-
-}
+}//end class Server
 
 object ServerManager{
   sealed trait Command
@@ -550,7 +548,7 @@ object ServerManager{
         }
     }
   }
-}
+}//end object ServerManager
 
 object Driver extends App {
   val system = ActorSystem(ServerManager(), "chord")
