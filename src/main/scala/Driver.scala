@@ -410,17 +410,52 @@ object ServerManager{
           Thread.sleep(20)
           node ! Server.Insert(x, 200, context.self)
         })
-   
+        // Collection for files inserted
+        val inserted = mutable.Set[String]()
+        // Collection for files found
+        val found = mutable.Set[String]()
+        // Counter for responses received
         var responses = 0
         Behaviors.receiveMessage{
           case FileInserted(filename) => {
+            inserted += filename
             // Update count for responses
             responses += 1
-            context.log.info(s"FILE INSERTED: $filename")
-            // Check if all servers have responded
+            // Check if all servers have inserted files
             if(responses == files.size){
-              context.log.info(s"ALL FILES HAVE BEEN FOUND!!")
-              Thread.sleep(20000)
+              // Check that the correct files were reported as successfully inserted
+              val correct = files.map(x => if(inserted.contains(x)==true) 1 else 0).sum
+              if(correct == files.size){
+                context.log.info(s"ALL ${files.size} FILES HAVE BEEN INSERTED!!")
+                Thread.sleep(2000)
+                responses = 0
+                // Send lookup requests after all files have been inserted
+                files.foreach(x =>{
+                  val node = shuffle(nodes).head
+                  Thread.sleep(20)
+                  node ! Lookup(x, context.self)
+                })
+                Behaviors.same
+              }
+              else{
+                context.log.info("ERROR: INCORRECT FILES RETURNED")
+                Behaviors.stopped
+              }
+            }
+            else{
+              Behaviors.same
+            }
+          }
+          case FoundFile(metadata) =>{
+            found += metadata.getFilename()
+            responses += 1
+            // Check if all files have been found
+            if(responses == files.size){
+              // Check that the correct files were reported as found
+              val correct = files.map(x => if(found.contains(x)==true) 1 else 0).sum
+              if(correct == files.size){
+                context.log.info(s"ALL ${files.size} FILES HAVE BEEN FOUND!!")
+              }
               Behaviors.stopped
             }
             else{
