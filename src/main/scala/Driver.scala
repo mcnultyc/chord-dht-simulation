@@ -11,6 +11,8 @@ import Server.{FindSuccessor, Lookup, TestTable, UpdateTable, UpdatedTable}
 import akka.NotUsed
 import javax.xml.bind.annotation.adapters.HexBinaryAdapter
 
+import scala.util.Random.shuffle
+
 import scala.compat.java8.FutureConverters.CompletionStageOps
 import scala.concurrent.Await
 
@@ -158,6 +160,7 @@ class Server(context: ActorContext[Server.Command])
   private var id: BigInt = MD5.hash(context.self.toString)
   // Store data keys in a set
   private val data = mutable.Map[String, FileMetadata]()
+  
   // Ids for finger table entries, n+2^{k-1} for 1 <= k <= 128
   private val tableIds =
     (0 to 127).map(i =>{
@@ -179,14 +182,14 @@ class Server(context: ActorContext[Server.Command])
   def lookupFile(parent: ActorRef[Command], replyTo: ActorRef[ServerManager.Command], filename: String, size: Int): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
-        context.log.info(s"IN LOOKUP FILE FUNCTION: ${context.self}")
+        //context.log.info(s"IN LOOKUP FILE FUNCTION: ${context.self}")
         val key = MD5.hash(filename)
         // Find node that should have file
         parent ! FindSuccessor(context.self, key, -1)
 
         Behaviors.receiveMessage{
           case FoundSuccessor(successor, id, index) => {
-            context.log.info(s"FOUND LOCATION FOR FILE: $successor")
+            //context.log.info(s"FOUND LOCATION FOR FILE: $successor")
             // Get file from selected node and forward reply
             successor ! GetFile(filename, replyTo)
             Behaviors.stopped
@@ -199,14 +202,14 @@ class Server(context: ActorContext[Server.Command])
   def insertFile(parent: ActorRef[Command], replyTo: ActorRef[ServerManager.Command], filename: String, size: Int): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
-        context.log.info(s"IN INSERT FILE FUNCTION: ${context.self}")
+        //context.log.info(s"IN INSERT FILE FUNCTION: ${context.self}")
         val key = MD5.hash(filename)
         // Find node to insert file in
         parent ! FindSuccessor(context.self, key, -1)
 
         Behaviors.receiveMessage{
           case FoundSuccessor(successor, id, index) => {
-            context.log.info(s"FOUND LOCATION FOR FILE: $successor")
+            //context.log.info(s"FOUND LOCATION FOR FILE: $successor")
             // Insert file in located node
             successor ! Insert(filename, size, replyTo)
             Behaviors.stopped
@@ -334,7 +337,7 @@ class Server(context: ActorContext[Server.Command])
         context.log.info(s"FOUND SUCCESSOR: $successor")
         this
       case Lookup(filename, replyTo) =>
-        context.log.info(s"LOOKING UP FILE: $filename")
+        //context.log.info(s"LOOKING UP FILE: $filename")
         // Route request to lookup file
         context.spawnAnonymous(lookupFile(context.self, replyTo, filename, 10))
         this
@@ -342,31 +345,36 @@ class Server(context: ActorContext[Server.Command])
         // Check if the current node has the file requested
         val metadata = data.getOrElse(filename, null)
         if(metadata != null){
-          context.log.info(s"FOUND FILE AT: ${context.self}")
+          //context.log.info(s"FOUND FILE AT: ${context.self}")
           // Respond with the file metadata
           replyTo ! ServerManager.FoundFile(metadata)
         }
         else{
-          context.log.info(s"FILE NOT FOUND AT: ${context.self}")
+          //context.log.info(s"FILE NOT FOUND AT: ${context.self}")
           // Respond file not found
           replyTo ! ServerManager.FileNotFound(filename)
         }
         this
       case Insert(filename, size, replyTo) =>
         val key = MD5.hash(filename)
-        context.log.info(s"FILE KEY: $key")
+        //context.log.info(s"FILE KEY: $key")
         if(prevId > id && key <= id){
           data(filename) = new FileMetadata(filename, size)
-          context.log.info(s"INSERT FILE AT: ${context.self}, ID: $id")
+          //context.log.info(s"INSERT FILE AT: ${context.self}, ID: $id")
+          replyTo ! ServerManager.FileInserted(filename)
+        }
+        else if(prevId > id && key > prevId){
+          data(filename) = new FileMetadata(filename, size)
+          //context.log.info(s"INSERT FILE AT: ${context.self}, ID: $id")
           replyTo ! ServerManager.FileInserted(filename)
         }
         else if(key > prevId && key <= id){
           data(filename) = new FileMetadata(filename, size)
-          context.log.info(s"INSERT FILE AT: ${context.self}")
+          //context.log.info(s"INSERT FILE AT: ${context.self}")
           replyTo ! ServerManager.FileInserted(filename)
         }
         else{
-          context.log.info(s"ROUTING REQUEST THROUGH: ${context.self}, ID: $id")
+          //context.log.info(s"ROUTING REQUEST THROUGH: ${context.self}, ID: $id")
           context.spawnAnonymous(insertFile(context.self, replyTo, filename, size))
         }
         this
@@ -390,6 +398,44 @@ object ServerManager{
 
   private var chordRing: List[(BigInt, ActorRef[Server.Command])] = null
 
+  def testInserts(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
+    Behaviors
+      .setup[AnyRef]{ context =>
+        // Send update table command to all servers
+        val files = (0 to 300).map(x => s"FILE#$x").toList
+        val nodes = chordRing.map(x => x._2).toList
+        context.log.info(s"INSERTING ${files.size} FILE(S)...")
+        files.foreach(x =>{
+          val node = shuffle(nodes).head
+          Thread.sleep(20)
+          node ! Server.Insert(x, 200, context.self)
+        })
+   
+        var responses = 0
+        Behaviors.receiveMessage{
+          case FileInserted(filename) => {
+            // Update count for responses
+            responses += 1
+            context.log.info(s"FILE INSERTED: $filename")
+            // Check if all servers have responded
+            if(responses == files.size){
+              context.log.info(s"ALL FILES HAVE BEEN FOUND!!")
+              Thread.sleep(20000)
+              Behaviors.stopped
+            }
+            else{
+              Behaviors.same
+            }
+          }
+          case FileNotFound(filename) => {
+            context.log.info(s"ERROR: FILE NOT FOUND [$filename]")
+            Behaviors.stopped
+          }
+          case _ => Behaviors.unhandled
+        }
+      }.narrow[NotUsed]
+  }
+
   def createChordRing(chordRing: List[(BigInt, ActorRef[Server.Command])]): Unit ={
     // Set prev of first node to be the last node (circular list)
     var prev = chordRing.last._2
@@ -407,6 +453,7 @@ object ServerManager{
       }
     }
   }
+
 
   def updateTables(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
@@ -459,17 +506,18 @@ object ServerManager{
             val ref = chordRing.head._2
             context.log.info("************In Tables updated handler***************")
             Thread.sleep(10000)
-            context.log.info(s"FIRST: $ref")
-            println(s"FILE KEY: ${MD5.hash("nailingpailin")}")
-            ref ! Server.Insert("nailingpailin", 5000, context.self)
+            context.spawnAnonymous(testInserts(context.self))
+            //context.log.info(s"FIRST: $ref")
+            //println(s"FILE KEY: ${MD5.hash("nailingpailin")}")
+            //ref ! Server.Insert("nailingpailin", 5000, context.self)
             //context.self ! Test
             Behaviors.same
           case FileInserted(filename) =>
             val last = chordRing.last._2
             last ! Lookup("nailingpailin", context.self)
             Behaviors.same
-          case FoundFile(filename) =>
-            context.log.info("FOUND FILE!!")
+          case FoundFile(metadata) =>
+            context.log.info(s"FOUND FILE!!, FILENAME: ${metadata.getFilename()}, SIZE: ${metadata.getSize()}")
             Behaviors.same
           case Test =>
             val last = chordRing.last._2
