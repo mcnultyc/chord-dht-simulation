@@ -493,7 +493,7 @@ object ServerManager{
             responses += 1
             // Check if all servers have responded
             if(responses == chordRing.size){
-              context.log.info(s"Servers have updated tables!")
+              context.log.info("Servers have updated tables!")
               // Inform parent that tables have all been created
               parent ! TablesUpdated
               Behaviors.stopped
