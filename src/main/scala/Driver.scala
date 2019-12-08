@@ -233,7 +233,7 @@ class Server(context: ActorContext[Server.Command])
             // Check if all requests have been responded too
             if(responses == tableIds.size){
               // Sort by index
-              val table = replies.sortBy(_._3).map{ case(server, id, _) => (id, server)}
+              val table = replies.sortBy(_._3).map{ case(server, id, _) => (id, server) }
               // Send updated table to be processed
               parent ! UpdatedTable(table.toList, replyTo)
               Behaviors.stopped
@@ -248,7 +248,7 @@ class Server(context: ActorContext[Server.Command])
 
   /* Behavior for child session to find successor.
    */
-  def findSuccessor(parent: ActorRef[Command], replyTo: ActorRef[Command], id: BigInt, index: Int): Behavior[NotUsed] = {
+  def findSuccessor(parent: ActorRef[Command], replyTo: ActorRef[Command], id: BigInt, index: Int): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef] { context =>
 
@@ -292,7 +292,7 @@ class Server(context: ActorContext[Server.Command])
       }.narrow[NotUsed]
   }
 
-  override def onMessage(msg: Command): Behavior[Command] = {
+  override def onMessage(msg: Command): Behavior[Command] ={
     msg match {
       case FindSuccessor(ref, id, index) =>
         //context.log.info(s"FIND SUCCESSOR - PREV $ref, THIS: ${context.self}")
@@ -506,7 +506,7 @@ object ServerManager{
       }.narrow[NotUsed]
   }
 
-  def writeSnapshot(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] = {
+  def writeSnapshot(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     //    val serverData = mMap[BigInt, String]()
     val servers = new xml.NodeBuffer
 
@@ -538,7 +538,7 @@ object ServerManager{
       }.narrow[NotUsed]
   }
 
-  def apply(): Behavior[Command] = {
+  def apply(): Behavior[Command] ={
 
     Behaviors.receive[Command]{
       (context, msg) =>
