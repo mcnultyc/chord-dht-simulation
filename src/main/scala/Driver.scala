@@ -54,8 +54,8 @@ object Server{
   // Commands to update successors and handle routing requests
   final case class GetSuccessor(id: BigInt) extends Command
   final case class SetSuccessor(next: ActorRef[Server.Command], nextId: BigInt) extends Command
-  final case class FindSuccessor(replyTo: ActorRef[Server.Command], id: BigInt) extends Command
-  final case class FoundSuccessor(successor: ActorRef[Command], id: BigInt) extends Command
+  final case class FindSuccessor(replyTo: ActorRef[Server.Command], id: BigInt, index: Int) extends Command
+  final case class FoundSuccessor(successor: ActorRef[Command], id: BigInt, index: Int) extends Command
 
   final case class SetPrev(prev: ActorRef[Server.Command], prevId: BigInt) extends Command
 
@@ -113,18 +113,19 @@ class Server(context: ActorContext[Server.Command])
   /* Find the node in the finger table closest to the ID.
    */
   def closestPrecedingNode(id: BigInt): ActorRef[Command] ={
+    /*
     // TODO check finger table for closest preceding node
     if(table != null){
       table.reverse.foreach{case (i, ref) => println((i, ref))}
       // Iterate through finger from largest to smallest key
       table.reverse.foreach{case (fingerId, ref) =>{
         // Select node with highest key that can fit the id given
-        /*
+
         if(fingerId >= this.id && fingerId <= id){
           //context.log.info(s"Closest preceding node: $ref")
           return ref
         }
-         */
+
         if(fingerId <= id){
           context.log.info(s"Closest preceding node: $ref")
           return ref
@@ -132,6 +133,7 @@ class Server(context: ActorContext[Server.Command])
       }}
     }
     Thread.sleep(25000)
+    */
     next // just use next to lookup nodes
   }
 
@@ -142,10 +144,10 @@ class Server(context: ActorContext[Server.Command])
         context.log.info(s"IN INSERT FILE FUNCTION: ${context.self}")
         val key = MD5.hash(filename)
         // Find node to insert file in
-        parent ! FindSuccessor(context.self, key)
+        parent ! FindSuccessor(context.self, key, -1)
 
         Behaviors.receiveMessage{
-          case FoundSuccessor(successor, id) => {
+          case FoundSuccessor(successor, id, index) => {
             context.log.info(s"FOUND LOCATION FOR FILE: $successor")
             // Insert file in located node
             successor ! Insert(filename, size)
@@ -163,16 +165,22 @@ class Server(context: ActorContext[Server.Command])
         // Counter for the number of responses
         var responses = 0
         // Request successor for each entry in finger table through immediate next
-        tableIds.foreach( id => next ! FindSuccessor(context.self, id))
-        val table = mutable.ListBuffer[(BigInt, ActorRef[Command])]()
+        var index = 0
+        tableIds.foreach( id => {
+          index += 1
+          next ! FindSuccessor(context.self, id, index)
+        })
+        val replies = mutable.ListBuffer[(ActorRef[Command], BigInt, Int)]()
         Behaviors.receiveMessage{
-          case FoundSuccessor(successor, id) => {
+          case FoundSuccessor(successor, id, index) => {
             responses += 1
-            table += ((id, successor))
+            replies += ((successor, id, index))
             // Check if all requests have been responded too
             if(responses == tableIds.size){
+              // Sort by index
+              val table = replies.sortBy(_._3).map{ case(server, id, _) => (id, server)}
               // Send updated table to be processed
-              parent ! UpdatedTable(table.sortBy(_._1).toList, replyTo)
+              parent ! UpdatedTable(table.toList, replyTo)
               Behaviors.stopped
 
             }
@@ -187,17 +195,17 @@ class Server(context: ActorContext[Server.Command])
 
   /* Behavior for child session to find successor.
    */
-  def findSuccessor(parent: ActorRef[Command], replyTo: ActorRef[Command], id: BigInt): Behavior[NotUsed] = {
+  def findSuccessor(parent: ActorRef[Command], replyTo: ActorRef[Command], id: BigInt, index: Int): Behavior[NotUsed] = {
     Behaviors
       .setup[AnyRef] { context =>
         if(printLog)context.log.info(s"IN FIND SUCCESSOR, PARENT: $parent, REF: ${context.self}")
 
         if(id > prevId && id <= this.id){
-          replyTo ! FoundSuccessor(parent, id)
+          replyTo ! FoundSuccessor(parent, id, index)
           Behaviors.stopped
         }
         else if(this.id > nextId && id <= nextId){
-          replyTo ! FoundSuccessor(parent, id)
+          replyTo ! FoundSuccessor(parent, id, index)
           Behaviors.stopped
         }
         else if(this.id > nextId){
@@ -208,7 +216,7 @@ class Server(context: ActorContext[Server.Command])
             if(printLog){
               context.log.info(s"LOCATION FOR FILE: $parent")
             }
-            replyTo ! FoundSuccessor(next, id)
+            replyTo ! FoundSuccessor(next, id, index)
             Behaviors.stopped
           }
           else{
@@ -218,11 +226,11 @@ class Server(context: ActorContext[Server.Command])
               context.log.info(s"ClOSEST PRECEDING NODE(1): $node")
             }
             // Request successor from closest preceding node
-            node ! FindSuccessor(context.self, id)
+            node ! FindSuccessor(context.self, id, index)
             Behaviors.receiveMessage{
-              case FoundSuccessor(successor, id) => {
+              case FoundSuccessor(successor, id, index) => {
                 // Forward successor to actor that requested successor
-                replyTo ! FoundSuccessor(successor,id)
+                replyTo ! FoundSuccessor(successor,id, index)
                 // Stop child session
                 Behaviors.stopped
               }
@@ -238,7 +246,7 @@ class Server(context: ActorContext[Server.Command])
             if(printLog){
               context.log.info(s"FILE LOCATION: $parent")
             }
-            replyTo ! FoundSuccessor(next, id)
+            replyTo ! FoundSuccessor(next, id, index)
             // Stop child session
             Behaviors.stopped
           }
@@ -249,11 +257,11 @@ class Server(context: ActorContext[Server.Command])
               context.log.info(s"CLOSEST PRECEDING NODE(2): $node")
             }
             // Request successor from closest preceding node
-            node ! FindSuccessor(context.self, id)
+            node ! FindSuccessor(context.self, id, index)
             Behaviors.receiveMessage{
-              case FoundSuccessor(successor, id) => {
+              case FoundSuccessor(successor, id, index) => {
                 // Forward successor to actor that requested successor
-                replyTo ! FoundSuccessor(successor, id)
+                replyTo ! FoundSuccessor(successor, id, index)
                 // Stop child session
                 Behaviors.stopped
               }
@@ -266,11 +274,11 @@ class Server(context: ActorContext[Server.Command])
 
   override def onMessage(msg: Command): Behavior[Command] = {
     msg match {
-      case FindSuccessor(ref,id) =>
+      case FindSuccessor(ref, id, index) =>
         //context.log.info(s"FIND SUCCESSOR - PREV $ref, THIS: ${context.self}")
         //context.log.info(s"Find successor at ${context.self}")
         // Create child session to handle successor request (concurrent)
-        context.spawnAnonymous(findSuccessor(context.self, ref, id))
+        context.spawnAnonymous(findSuccessor(context.self, ref, id, index))
         this
       case SetId(id) =>
         this.id = id
@@ -287,6 +295,16 @@ class Server(context: ActorContext[Server.Command])
         println(s"ID: $id, NEXT: $nextId, PREV: $prevId")
         // Update current finger table
         this.table = table
+
+        val first = table.head._2
+        if(first != next){
+          context.log.info("houston we have problem :(((((")
+        }
+        else{
+          context.log.info("YES WE DID IT")
+        }
+
+
         //println(s"*******************************ref: ${context.self}*******************************")
         this.table.foreach{ case(id, ref) =>{
           //println(s"id: $id, ref: $ref")
@@ -296,7 +314,7 @@ class Server(context: ActorContext[Server.Command])
         this
       case TestTable =>
         val testId = BigInt("333658623028670999750805885164791678408")
-        context.spawnAnonymous(findSuccessor(context.self, context.self, testId))
+        context.spawnAnonymous(findSuccessor(context.self, context.self, testId, -1))
         this
       case GetId(replyTo) =>
         replyTo ! RespondId(id)
@@ -305,7 +323,7 @@ class Server(context: ActorContext[Server.Command])
         this.prev = prev
         this.prevId = prevId
         this
-      case FoundSuccessor(successor,id) =>
+      case FoundSuccessor(successor,id, index) =>
         context.log.info(s"FOUND SUCCESSOR: $successor")
         this
       case Insert(filename, size) =>
@@ -413,14 +431,14 @@ object ServerManager{
             Thread.sleep(10000)
             context.log.info(s"FIRST: $ref")
             println(s"FILE KEY: ${MD5.hash("nailingpailin")}")
-            ref ! Server.Insert("nailingpailin", 5000)
+            //ref ! Server.Insert("nailingpailin", 5000)
             //context.self ! Test
             Behaviors.same
           case Test =>
             val last = chordRing.last._2
             val first = chordRing.head._2
             context.log.info(s"LAST: $last")
-            last ! Server.FindSuccessor(first, MD5.hash("nailingpailin"))
+            //last ! Server.FindSuccessor(first, MD5.hash("nailingpailin"))
             Behaviors.same
           case Shutdown =>
             Behaviors.stopped
