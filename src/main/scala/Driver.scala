@@ -401,10 +401,10 @@ object ServerManager{
   def testInserts(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
-        // Send update table command to all servers
         val files = (0 to 300).map(x => s"FILE#$x").toList
         val nodes = chordRing.map(x => x._2).toList
         context.log.info(s"INSERTING ${files.size} FILE(S)...")
+        // Send update table command to all servers 
         files.foreach(x =>{
           val node = shuffle(nodes).head
           Thread.sleep(20)
