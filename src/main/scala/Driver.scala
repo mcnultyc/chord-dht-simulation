@@ -9,6 +9,7 @@ import javax.xml.bind.annotation.adapters.HexBinaryAdapter
 
 import scala.collection.mutable
 import scala.util.Random.shuffle
+import scala.xml._
 
 object MD5{
   private val hashAlgorithm = MessageDigest.getInstance("MD5")
@@ -69,7 +70,7 @@ class TestChord{
         if(nexts(temp) != res) 0 else 1
       }.sum
 
-    val edgeCases = if(select(101,0,100, 10) == 0) 1 else 0
+    val edgeCases = if(select(101, 0, 100, 10) == 0) 1 else 0
 
     println(passed+edgeCases)
   }
@@ -126,7 +127,8 @@ object Server{
 
   final case class FoundData(data: String) extends Command
 
-
+  // Command used by ServerManager to get server data
+  final case class GetData(replyTo: ActorRef[ServerManager.Command]) extends Command
 
   case object TestTable extends Command
 
@@ -367,6 +369,9 @@ class Server(context: ActorContext[Server.Command])
           context.spawnAnonymous(insertFile(context.self, replyTo, filename, size))
         }
         this
+      case GetData(replyTo) =>
+        replyTo ! ServerManager.SendData(id, context.self.toString)
+        this
     }
   }
 }//end class Server
@@ -377,7 +382,9 @@ object ServerManager{
   final case class Start(numServers: Int) extends Command
   case object Shutdown extends Command
   final case class TableUpdated(server: ActorRef[Server.Command]) extends Command
+  final case class SendData(id: BigInt, name: String) extends Command
   case object TablesUpdated extends Command
+  case object DataSent extends Command
   case object Test extends Command
 
   final case class FileInserted(filename: String) extends Command
@@ -499,6 +506,38 @@ object ServerManager{
       }.narrow[NotUsed]
   }
 
+  def writeSnapshot(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] = {
+    //    val serverData = mMap[BigInt, String]()
+    val servers = new xml.NodeBuffer
+
+    Behaviors
+      .setup[AnyRef] { context =>
+        // Send get data command to all servers
+        chordRing.foreach { case (_, ref) => ref ! Server.GetData(context.self) }
+        var responses = 0
+        Behaviors.receiveMessage {
+          case SendData(id, name) =>
+            // Add server data to collection
+            //            serverData.put(id, name)
+            servers += <server><id>{id}</id><name>{name}</name></server>
+
+            // Update count for responses
+            responses += 1
+            // Check if all servers have responded
+            if (responses == chordRing.size){
+              XML.save("test.xml", <servers>{servers}</servers>)
+              context.log.info("All servers have sent data!")
+              // Inform parent that all responses have been received
+              parent ! DataSent
+              Behaviors.stopped
+            }
+            else{
+              Behaviors.same
+            }
+        }
+      }.narrow[NotUsed]
+  }
+
   def apply(): Behavior[Command] = {
 
     Behaviors.receive[Command]{
@@ -542,6 +581,8 @@ object ServerManager{
             val first = chordRing.head._2
             context.log.info(s"LAST: $last")
             //last ! Server.FindSuccessor(first, MD5.hash("nailingpailin"))
+            Behaviors.same
+          case DataSent =>
             Behaviors.same
           case Shutdown =>
             Behaviors.stopped
