@@ -387,7 +387,7 @@ class ServerManager extends Actor with ActorLogging{
   def testInserts(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
-        val files = (0 to 300).map(x => s"FILE#$x").toList
+        val files = (0 to 300).map(x => s"FILE-$x").toList
         val nodes = ring.map(x => x._2).toList
         context.log.info(s"INSERTING ${files.size} FILE(S)...")
         // Send update table command to all servers 
@@ -544,16 +544,17 @@ class ServerManager extends Actor with ActorLogging{
       context.spawnAnonymous(testInserts(context.self))
     //Behaviors.same
     case HTML_LOOKUP(movieName) =>
-      ring.last._2 ! Lookup("FILE#2", context.self)
+      ring.last._2 ! Lookup(movieName, sender())
     case Test =>
       //val t: Nothing = sender()
       //sender() ! s"filename: testing.txt, year: 1902"
       //val test: ActorRef[Any] = context.self
       //val c: ActorRef[String] = sender()
       //c ! s"filename: testing.txt, year: 1902"
-      val metadata = new FileMetadata("testing", 0)
+      ring.last._2 ! Lookup("FILE#2", sender())
+      //val metadata = new FileMetadata("testing", 0)
       //sender() ! TestReply(s"filename: testing.txt, year: 1902")
-      sender() ! FoundFile(metadata.getFilename(), metadata.getSize())
+      //sender() ! FoundFile(metadata.getFilename(), metadata.getSize())
     //context.log.info(s"LOOKING UP MOVIE FILE $movieName")
     //Behaviors.same
     case Shutdown =>
@@ -591,12 +592,12 @@ object WebServer {
           extractUnmatchedPath { movieName =>
             val movie = movieName.dropChars(1).toString()
             //manager ! ServerManager.HTML_LOOKUP(movie)
-
+            println(s"movie name: $movieName")
             //val result: Future[CookieFabric.Reply] = cookieFabric.ask(ref => CookieFabric.GiveMeCookies(3, ref))
             implicit val timeout: Timeout = 3.seconds
             //val result: Future[ServerManager.TestReply] = (manager ? ServerManager.Test)
             //val future = (manager ? ServerManager.Test).mapTo[ServerManager.TestReply]
-            val future = (manager  ? ServerManager.Test).mapTo[ServerManager.FoundFile]
+            val future = (manager  ? ServerManager.HTML_LOOKUP(movie)).mapTo[ServerManager.FoundFile]
             val result = Await.result(future, timeout.duration)
             //val result = Marshal(future).to[MessageEntity]
             complete(result)
