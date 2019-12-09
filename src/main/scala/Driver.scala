@@ -17,6 +17,7 @@ import akka.http.scaladsl.model.{ContentTypes, HttpEntity}
 import akka.http.scaladsl.server.Directives.{complete, concat, extractUnmatchedPath, get, pathPrefix, pathSingleSlash}
 import akka.stream.ActorMaterializer
 import javax.xml.bind.annotation.adapters.HexBinaryAdapter
+import org.slf4j.LoggerFactory
 
 import scala.util.Random.shuffle
 import scala.compat.java8.FutureConverters.CompletionStageOps
@@ -320,14 +321,17 @@ class Server(context: ActorContext[Server.Command])
         // Cases for inserting at this node
         if(prevId > id && key <= id){
           data(filename) = new FileMetadata(filename, size)
+          context.log.info(s"FILE INSERTED! NAME: $filename, SIZE: $size")
           replyTo ! ServerManager.FileInserted(filename)
         }
         else if(prevId > id && key > prevId){
           data(filename) = new FileMetadata(filename, size)
+          context.log.info(s"FILE INSERTED! NAME: $filename, SIZE: $size")
           replyTo ! ServerManager.FileInserted(filename)
         }
         else if(key > prevId && key <= id){
           data(filename) = new FileMetadata(filename, size)
+          context.log.info(s"FILE INSERTED! NAME: $filename, SIZE: $size")  
           replyTo ! ServerManager.FileInserted(filename)
         }
         else{
@@ -358,7 +362,6 @@ object ServerManager{
   final case class FileNotFound(filename: String) extends Command
   final case class HTML_LOOKUP(movieName: String) extends Command
   private var ring: List[(BigInt, ActorRef[Server.Command])] = null
-
 
   def testInserts(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
@@ -517,8 +520,9 @@ object ServerManager{
             context.spawnAnonymous(updateTables(context.self))
             Behaviors.same
           case ServersReady =>
-            context.log.info("SERVERS READY")
+            context.log.info("SERVERS WARMED UP")
             Thread.sleep(2000)
+            context.log.debug("TESTING")
             context.spawnAnonymous(testInserts(context.self))
             Behaviors.same
           case Shutdown =>
