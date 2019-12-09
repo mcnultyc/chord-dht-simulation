@@ -517,42 +517,6 @@ class ServerManager extends Actor with ActorLogging{
       }.narrow[NotUsed]
   }
 
-  /*
-  val behavior: Behavior[Command] = {
-    Behaviors.setup{ context =>
-      Behaviors.receive[Command]{
-        (context, msg) =>
-          msg match {
-            case Start(total) =>
-              context.log.info(s"STARTING $total SERVERS")
-              // Create servers for datacenter
-              val servers = (1 to total).map(i => context.spawn(Server(), s"server:$i")).toList
-              // Create the chord ring
-              context.spawnAnonymous(createChordRing(context.self, servers))
-              Behaviors.same
-            case ServersWarmedUp =>
-              context.log.info("SERVERS WARMED UP")
-              // Update Tables
-              context.spawnAnonymous(updateTables(context.self))
-              Behaviors.same
-            case ServersReady =>
-              context.log.info("SERVERS READY UP")
-              Thread.sleep(2000)
-              context.log.debug("TESTING")
-              context.spawnAnonymous(testInserts(context.self))
-              Behaviors.same
-            case HTML_LOOKUP(movieName) =>
-              ring.last._2 ! Lookup("FILE#2", context.self)
-              context.log.info(s"LOOKING UP MOVIE FILE $movieName")
-              Behaviors.same
-            case Shutdown =>
-              Behaviors.stopped
-          }
-      }
-    }
-  }
-   */
-
   override def receive = {
     case Start(total) =>
       //context.log.info(s"STARTING $total SERVERS")
@@ -584,40 +548,6 @@ class ServerManager extends Actor with ActorLogging{
       context.stop(self)
   }
 
-  /*
-  def apply(): Behavior[Command] = {
-
-    Behaviors.receive[Command]{
-      (context, msg) =>
-        msg match {
-          case Start(total) =>
-            context.log.info(s"STARTING $total SERVERS")
-            // Create servers for datacenter
-            val servers = (1 to total).map(i => context.spawn(Server(), s"server:$i")).toList
-            // Create the chord ring
-            context.spawnAnonymous(createChordRing(context.self, servers))
-            Behaviors.same
-          case ServersWarmedUp =>
-            context.log.info("SERVERS WARMED UP")
-            // Update Tables
-            context.spawnAnonymous(updateTables(context.self))
-            Behaviors.same
-          case ServersReady =>
-            context.log.info("SERVERS READY")
-            Thread.sleep(2000)
-            context.log.debug("TESTING")
-            context.spawnAnonymous(testInserts(context.self))
-            Behaviors.same
-          case HTML_LOOKUP(movieName) =>
-            ring.last._2 ! Lookup("FILE#2", context.self)
-            context.log.info(s"LOOKING UP MOVIE FILE $movieName")
-            Behaviors.same
-          case Shutdown =>
-            Behaviors.stopped
-        }
-    }
-  }
-  */
 }
 
 /*
