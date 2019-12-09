@@ -9,12 +9,22 @@ import java.security.MessageDigest
 
 import Server.{FindSuccessor, Lookup, TestTable, UpdateTable, UpdatedTable}
 import akka.NotUsed
+import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
+import akka.http.scaladsl.Http
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity, MessageEntity, StatusCodes}
+import akka.http.scaladsl.server.Directives.{complete, concat, extractUnmatchedPath, get, pathPrefix, pathSingleSlash}
+import akka.stream.ActorMaterializer
 import javax.xml.bind.annotation.adapters.HexBinaryAdapter
 import org.slf4j.LoggerFactory
 
 import scala.util.Random.shuffle
 import scala.compat.java8.FutureConverters.CompletionStageOps
-import scala.concurrent.Await
+import scala.concurrent.{Await, Future}
+import akka.actor.typed.scaladsl.adapter._
+import akka.pattern.ask
+import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
+import spray.json.DefaultJsonProtocol._
+import akka.http.scaladsl.marshalling.Marshal
 
 object MD5{
   private val hashAlgorithm = MessageDigest.getInstance("MD5")
@@ -336,16 +346,22 @@ class Server(context: ActorContext[Server.Command])
 
 }
 
-object ServerManager{
+object ServerManager {
+
   sealed trait Command
+
   // Command to start the datacenter
   final case class Start(numServers: Int) extends Command
   case object Shutdown extends Command
   final case class TableUpdated(server: ActorRef[Server.Command]) extends Command
   case object TablesUpdated extends Command
-  case object Test extends Command
 
-  case object ServerWarmedUp   extends Command
+  //final case class Test(replyTo: ActorRef[TestReply]) extends Command
+  case object Test extends Command
+  final case class TestReply(response: String) extends Command
+
+  // Commands to set up the datacenter
+  case object ServerWarmedUp extends Command
   case object ServersWarmedUp extends Command
   case object ServerReady extends Command
   case object ServersReady extends Command
@@ -353,6 +369,12 @@ object ServerManager{
   final case class FileInserted(filename: String) extends Command
   final case class FoundFile(data: FileMetadata) extends Command
   final case class FileNotFound(filename: String) extends Command
+  final case class HTML_LOOKUP(movieName: String) extends Command
+}
+
+class ServerManager extends Actor with ActorLogging{
+
+  import ServerManager._
 
   private var ring: List[(BigInt, ActorRef[Server.Command])] = null
 
@@ -495,6 +517,74 @@ object ServerManager{
       }.narrow[NotUsed]
   }
 
+  /*
+  val behavior: Behavior[Command] = {
+    Behaviors.setup{ context =>
+      Behaviors.receive[Command]{
+        (context, msg) =>
+          msg match {
+            case Start(total) =>
+              context.log.info(s"STARTING $total SERVERS")
+              // Create servers for datacenter
+              val servers = (1 to total).map(i => context.spawn(Server(), s"server:$i")).toList
+              // Create the chord ring
+              context.spawnAnonymous(createChordRing(context.self, servers))
+              Behaviors.same
+            case ServersWarmedUp =>
+              context.log.info("SERVERS WARMED UP")
+              // Update Tables
+              context.spawnAnonymous(updateTables(context.self))
+              Behaviors.same
+            case ServersReady =>
+              context.log.info("SERVERS READY UP")
+              Thread.sleep(2000)
+              context.log.debug("TESTING")
+              context.spawnAnonymous(testInserts(context.self))
+              Behaviors.same
+            case HTML_LOOKUP(movieName) =>
+              ring.last._2 ! Lookup("FILE#2", context.self)
+              context.log.info(s"LOOKING UP MOVIE FILE $movieName")
+              Behaviors.same
+            case Shutdown =>
+              Behaviors.stopped
+          }
+      }
+    }
+  }
+   */
+
+  override def receive = {
+    case Start(total) =>
+      //context.log.info(s"STARTING $total SERVERS")
+      // Create servers for datacenter
+      val servers = (1 to total).map(i => context.spawn(Server(), s"server:$i")).toList
+      // Create the chord ring
+      context.spawnAnonymous(createChordRing(context.self, servers))
+    //Behaviors.same
+    case ServersWarmedUp =>
+      //context.log.info("SERVERS WARMED UP")
+      // Update Tables
+      context.spawnAnonymous(updateTables(context.self))
+    //Behaviors.same
+    case ServersReady =>
+      //context.log.info("SERVERS READY")
+      Thread.sleep(2000)
+      //context.log.debug("TESTING")
+      context.spawnAnonymous(testInserts(context.self))
+    //Behaviors.same
+    case HTML_LOOKUP(movieName) =>
+      ring.last._2 ! Lookup("FILE#2", context.self)
+    case Test =>
+      //val t: Nothing = sender()
+      sender() ! s"filename: testing.txt, year: 1902"
+    //context.log.info(s"LOOKING UP MOVIE FILE $movieName")
+    //Behaviors.same
+    case Shutdown =>
+      //Behaviors.stopped
+      context.stop(self)
+  }
+
+  /*
   def apply(): Behavior[Command] = {
 
     Behaviors.receive[Command]{
@@ -513,21 +603,26 @@ object ServerManager{
             context.spawnAnonymous(updateTables(context.self))
             Behaviors.same
           case ServersReady =>
-            context.log.info("SERVERS WARMED UP")
+            context.log.info("SERVERS READY")
             Thread.sleep(2000)
             context.log.debug("TESTING")
             context.spawnAnonymous(testInserts(context.self))
+            Behaviors.same
+          case HTML_LOOKUP(movieName) =>
+            ring.last._2 ! Lookup("FILE#2", context.self)
+            context.log.info(s"LOOKING UP MOVIE FILE $movieName")
             Behaviors.same
           case Shutdown =>
             Behaviors.stopped
         }
     }
   }
+  */
 }
 
-
+/*
 object Driver extends App {
-  val system = ActorSystem(ServerManager(), "chord")
+  val system = akka.actor.typed.ActorSystem(ServerManager(), "chord")
   val website = new WebServer
   website.run
   // Add 5 servers to the system
@@ -535,4 +630,51 @@ object Driver extends App {
   // Sleep for 7 seconds and then send shutdown signal
   Thread.sleep(30000)
   system ! ServerManager.Shutdown
+}
+*/
+
+object WebServer {
+
+  //final case class TestReply(response: String)
+
+  def main(args: Array[String]): Unit = {
+    implicit val system = akka.actor.ActorSystem("testing")
+    implicit val materializer = ActorMaterializer()
+    // needed for the future flatMap/onComplete in the end
+    implicit val executionContext = system.dispatcher
+
+    //val manager = system.spawn(ServerManager.behavior, "servermanager")
+    val manager = system.actorOf(Props[ServerManager], "servermanager")
+    manager ! ServerManager.Start(20)
+
+    val xmlstyle = "<?xml-stylesheet href=\"#style\"\n   type=\"text/css\"?>"
+
+    implicit val bidFormat = jsonFormat1(ServerManager.TestReply)
+
+    val route = get {
+      concat(
+        pathSingleSlash {
+          complete(HttpEntity(ContentTypes.`text/xml(UTF-8)`, xmlstyle + "<html><body>Hello world!</body></html>"))
+        },
+        pathPrefix("movies") {
+          extractUnmatchedPath { movieName =>
+            val movie = movieName.dropChars(1).toString()
+            //manager ! ServerManager.HTML_LOOKUP(movie)
+
+            //val result: Future[CookieFabric.Reply] = cookieFabric.ask(ref => CookieFabric.GiveMeCookies(3, ref))
+            implicit val timeout: Timeout = 3.seconds
+            //val result: Future[ServerManager.TestReply] = (manager ? ServerManager.Test)
+            val future = (manager ? ServerManager.Test).mapTo[String]
+            //val result = Await.result(future, timeout.duration)
+            //val result = Marshal(future).to[MessageEntity]
+            complete(future)
+          }
+        }
+
+      )
+    }
+    val bindingFuture: Future[Http.ServerBinding] = Http().bindAndHandle(route, "localhost", 8080)
+    println(s"Server online at http://localhost:8080/\nPress RETURN to stop...")
+
+  }
 }
