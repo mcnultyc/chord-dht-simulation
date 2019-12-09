@@ -1,5 +1,6 @@
 import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
+
 import akka.util.Timeout
 
 import scala.util.{Failure, Success}
@@ -8,6 +9,7 @@ import scala.collection.mutable
 import java.security.MessageDigest
 
 import Server.{FindSuccessor, Lookup, TestTable, UpdateTable, UpdatedTable}
+import ServerManager.HTML_LOOKUP
 import akka.NotUsed
 import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
 import akka.http.scaladsl.Http
