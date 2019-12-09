@@ -91,7 +91,7 @@ object Server{
 }
 
 class Server(context: ActorContext[Server.Command])
-        extends AbstractBehavior[Server.Command](context) {
+  extends AbstractBehavior[Server.Command](context) {
   import Server._
   // Actor reference to the next server in the chord ring
   private var next: ActorRef[Server.Command] = null;
@@ -107,7 +107,7 @@ class Server(context: ActorContext[Server.Command])
   private var id: BigInt = -1
   // Store data keys in a set
   private val data = mutable.Map[String, FileMetadata]()
-  
+
   // Ids for finger table entries, n+2^{k-1} for 1 <= k <= 128
   var tableIds: List[BigInt] = null
 
@@ -264,7 +264,7 @@ class Server(context: ActorContext[Server.Command])
               n -= md5Max
             }
             n
-        }).toList
+          }).toList
         // Inform server manager that id and table ids are ready
         report(replyTo)
         this
@@ -353,7 +353,7 @@ object ServerManager{
 
   private var ring: List[(BigInt, ActorRef[Server.Command])] = null
 
-  
+
   def testInserts(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
@@ -427,46 +427,46 @@ object ServerManager{
       }.narrow[NotUsed]
   }
 
-   def createChordRing(parent: ActorRef[ServerManager.Command], servers: List[ActorRef[Server.Command]]): Behavior[NotUsed] = {
-     Behaviors
-       .setup[AnyRef] { context =>
-         // Create chord ring, sorted by ids
-         ring = servers.map(ref => (MD5.hash(ref.toString), ref)).sortBy(_._1)
-         // Sends ids to all servers in the ring
-         ring.foreach{ case(id, ref) => ref ! Server.SetId(id, context.self)}
-         // Send next and prev ids to servers in the ring
-         var prev = ring.last._2
-         var prevId = ring.last._1
-         // Inform servers about their previous and next nodes in the ring
-         ring.foreach{ case(id, ref) =>{
-           // Set the servers's successor
-           prev ! Server.SetSuccessor(ref, id, context.self)
-           // Set the servers's predecessor
-           ref ! Server.SetPrev(prev, prevId, context.self)
-           println(s"REF: $ref, ID: $id")
-           // Update previous node in the ring
-           prev = ref
-           prevId = id
-         }}
-         // Counter for the number of servers that are ready
-         var responses = 0
-         Behaviors.receiveMessage{
-           case ServerWarmedUp =>{
-             responses += 1
-             // Check if all servers have been warmed up
-             if(responses == servers.size){
-               // Inform server manager that all servers are warmed up
-               parent ! ServersWarmedUp
-               Behaviors.stopped
-             }
-             else{
-               Behaviors.same
-             }
-           }
-           case _ => Behaviors.unhandled
-         }
-       }.narrow[NotUsed]
-   }
+  def createChordRing(parent: ActorRef[ServerManager.Command], servers: List[ActorRef[Server.Command]]): Behavior[NotUsed] = {
+    Behaviors
+      .setup[AnyRef] { context =>
+        // Create chord ring, sorted by ids
+        ring = servers.map(ref => (MD5.hash(ref.toString), ref)).sortBy(_._1)
+        // Sends ids to all servers in the ring
+        ring.foreach{ case(id, ref) => ref ! Server.SetId(id, context.self)}
+        // Send next and prev ids to servers in the ring
+        var prev = ring.last._2
+        var prevId = ring.last._1
+        // Inform servers about their previous and next nodes in the ring
+        ring.foreach{ case(id, ref) =>{
+          // Set the servers's successor
+          prev ! Server.SetSuccessor(ref, id, context.self)
+          // Set the servers's predecessor
+          ref ! Server.SetPrev(prev, prevId, context.self)
+          println(s"REF: $ref, ID: $id")
+          // Update previous node in the ring
+          prev = ref
+          prevId = id
+        }}
+        // Counter for the number of servers that are ready
+        var responses = 0
+        Behaviors.receiveMessage{
+          case ServerWarmedUp =>{
+            responses += 1
+            // Check if all servers have been warmed up
+            if(responses == servers.size){
+              // Inform server manager that all servers are warmed up
+              parent ! ServersWarmedUp
+              Behaviors.stopped
+            }
+            else{
+              Behaviors.same
+            }
+          }
+          case _ => Behaviors.unhandled
+        }
+      }.narrow[NotUsed]
+  }
 
   def updateTables(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
@@ -499,7 +499,7 @@ object ServerManager{
       (context, msg) =>
         msg match {
           case Start(total) =>
-            context.log.info(s"STARTING $total SERVERS")    
+            context.log.info(s"STARTING $total SERVERS")
             // Create servers for datacenter
             val servers = (1 to total).map(i => context.spawn(Server(), s"server:$i")).toList
             // Create the chord ring
@@ -514,7 +514,7 @@ object ServerManager{
             context.log.info("SERVERS READY")
             Thread.sleep(2000)
             context.spawnAnonymous(testInserts(context.self))
-            Behaviors.same                                         
+            Behaviors.same
           case Shutdown =>
             Behaviors.stopped
         }
@@ -525,6 +525,8 @@ object ServerManager{
 
 object Driver extends App {
   val system = ActorSystem(ServerManager(), "chord")
+  val website = new WebServer
+  website.run
   // Add 5 servers to the system
   system ! ServerManager.Start(20)
   // Sleep for 7 seconds and then send shutdown signal
