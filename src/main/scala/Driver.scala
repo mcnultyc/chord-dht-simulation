@@ -509,23 +509,10 @@ object ServerManager{
             Thread.sleep(2000)
             context.spawnAnonymous(testInserts(context.self))
             Behaviors.same
-          case FileInserted(filename) =>
-            val last = ring.last._2
-            last ! Lookup("nailingpailin", context.self)
-            Behaviors.same
           case ServersWarmedUp =>
             context.log.info("SERVERS WARMED UP")
             // Update Tables
             context.spawnAnonymous(updateTables(context.self))
-            Behaviors.same
-          case FoundFile(metadata) =>
-            context.log.info(s"FOUND FILE!!, FILENAME: ${metadata.getFilename()}, SIZE: ${metadata.getSize()}")
-            Behaviors.same
-          case Test =>
-            val last = ring.last._2
-            val first = ring.head._2
-            context.log.info(s"LAST: $last")
-            //last ! Server.FindSuccessor(first, MD5.hash("nailingpailin"))
             Behaviors.same
           case Shutdown =>
             Behaviors.stopped
