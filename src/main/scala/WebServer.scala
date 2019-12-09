@@ -314,7 +314,8 @@ class Server(context: ActorContext[Server.Command])
         val metadata = data.getOrElse(filename, null)
         if(metadata != null){
           // Respond with the file metadata
-          replyTo ! ServerManager.FoundFile(metadata)
+          //replyTo ! ServerManager.FoundFile(metadata)
+          replyTo ! ServerManager.FoundFile(metadata.getFilename(), metadata.getSize())
         }
         else{
           // Respond file not found
@@ -362,6 +363,8 @@ object ServerManager {
   case object Test extends Command
   final case class TestReply(response: String) extends Command
 
+  final case class Test2(act: ActorRef[Any]) extends Command
+
   // Commands to set up the datacenter
   case object ServerWarmedUp extends Command
   case object ServersWarmedUp extends Command
@@ -369,7 +372,8 @@ object ServerManager {
   case object ServersReady extends Command
 
   final case class FileInserted(filename: String) extends Command
-  final case class FoundFile(data: FileMetadata) extends Command
+  //final case class FoundFile(data: FileMetadata) extends Command
+  final case class FoundFile(filename: String, size: Int) extends Command
   final case class FileNotFound(filename: String) extends Command
   final case class HTML_LOOKUP(movieName: String) extends Command
 }
@@ -428,8 +432,9 @@ class ServerManager extends Actor with ActorLogging{
               Behaviors.same
             }
           }
-          case FoundFile(metadata) =>{
-            found += metadata.getFilename()
+          case FoundFile(filename, size) =>{
+            //found += metadata.getFilename()
+            found += filename
             responses += 1
             // Check if all files have been found
             if(responses == files.size){
@@ -542,7 +547,13 @@ class ServerManager extends Actor with ActorLogging{
       ring.last._2 ! Lookup("FILE#2", context.self)
     case Test =>
       //val t: Nothing = sender()
-      sender() ! s"filename: testing.txt, year: 1902"
+      //sender() ! s"filename: testing.txt, year: 1902"
+      //val test: ActorRef[Any] = context.self
+      //val c: ActorRef[String] = sender()
+      //c ! s"filename: testing.txt, year: 1902"
+      val metadata = new FileMetadata("testing", 0)
+      //sender() ! TestReply(s"filename: testing.txt, year: 1902")
+      sender() ! FoundFile(metadata.getFilename(), metadata.getSize())
     //context.log.info(s"LOOKING UP MOVIE FILE $movieName")
     //Behaviors.same
     case Shutdown =>
@@ -551,19 +562,6 @@ class ServerManager extends Actor with ActorLogging{
   }
 
 }
-
-/*
-object Driver extends App {
-  val system = akka.actor.typed.ActorSystem(ServerManager(), "chord")
-  val website = new WebServer
-  website.run
-  // Add 5 servers to the system
-  system ! ServerManager.Start(20)
-  // Sleep for 7 seconds and then send shutdown signal
-  Thread.sleep(30000)
-  system ! ServerManager.Shutdown
-}
-*/
 
 object WebServer {
 
@@ -581,7 +579,8 @@ object WebServer {
 
     val xmlstyle = "<?xml-stylesheet href=\"#style\"\n   type=\"text/css\"?>"
 
-    implicit val bidFormat = jsonFormat1(ServerManager.TestReply)
+    //implicit val bidFormat = jsonFormat1(ServerManager.TestReply.apply)
+    implicit val format = jsonFormat2(ServerManager.FoundFile.apply)
 
     val route = get {
       concat(
@@ -596,10 +595,11 @@ object WebServer {
             //val result: Future[CookieFabric.Reply] = cookieFabric.ask(ref => CookieFabric.GiveMeCookies(3, ref))
             implicit val timeout: Timeout = 3.seconds
             //val result: Future[ServerManager.TestReply] = (manager ? ServerManager.Test)
-            val future = (manager ? ServerManager.Test).mapTo[String]
-            //val result = Await.result(future, timeout.duration)
+            //val future = (manager ? ServerManager.Test).mapTo[ServerManager.TestReply]
+            val future = (manager  ? ServerManager.Test).mapTo[ServerManager.FoundFile]
+            val result = Await.result(future, timeout.duration)
             //val result = Marshal(future).to[MessageEntity]
-            complete(future)
+            complete(result)
           }
         }
 
