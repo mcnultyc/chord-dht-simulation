@@ -534,16 +534,6 @@ object ServerManager{
   }
 }
 
-/*
-object Driver{
-
-  def main(args: Array[String]): Unit = {
-    val tests = new TestChord()
-    tests.runTest()
-  }
-}
-*/
-
 
 object Driver extends App {
   val system = ActorSystem(ServerManager(), "chord")
