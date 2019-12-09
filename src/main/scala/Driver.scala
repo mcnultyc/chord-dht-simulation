@@ -54,14 +54,16 @@ object Server{
   case object Start extends Command
   case object Pause extends Command
   // Commands to update successors and handle routing requests
-  final case class SetSuccessor(next: ActorRef[Server.Command], nextId: BigInt) extends Command
+  final case class SetSuccessor(next: ActorRef[Server.Command], nextId: BigInt,
+                                replyTo: ActorRef[ServerManager.Command]) extends Command
   final case class FindSuccessor(replyTo: ActorRef[Server.Command], id: BigInt, index: Int) extends Command
   final case class FoundSuccessor(successor: ActorRef[Command], id: BigInt, index: Int) extends Command
 
-  final case class SetPrev(prev: ActorRef[Server.Command], prevId: BigInt) extends Command
+  final case class SetPrev(prev: ActorRef[Server.Command], prevId: BigInt,
+                           replyTo: ActorRef[ServerManager.Command]) extends Command
 
   // Commands to update server ids
-  final case class SetId(id: BigInt) extends Command
+  final case class SetId(id: BigInt, replyTo: ActorRef[ServerManager.Command]) extends Command
   final case class GetId(replyTo: ActorRef[Command]) extends Command
   final case class RespondId(id: BigInt) extends Command
   // Commands to update table and respond updated table
@@ -94,15 +96,15 @@ class Server(context: ActorContext[Server.Command])
   // Actor reference to the next server in the chord ring
   private var next: ActorRef[Server.Command] = null;
   // Cache id of next server in the chord ring
-  private var nextId: BigInt = 0
+  private var nextId: BigInt = -1
   // Set previous node in chord ring
   private var prev: ActorRef[Server.Command] = null
   // Cache id of the previous server in the chord ring
-  private var prevId: BigInt = 0
+  private var prevId: BigInt = -1
   // Finger table used for routing messages
   private var table: List[(BigInt, ActorRef[Command])] = null
   // Set id as hash of context username
-  private var id: BigInt = MD5.hash(context.self.toString)
+  private var id: BigInt = -1
   // Store data keys in a set
   private val data = mutable.Map[String, FileMetadata]()
   
@@ -234,13 +236,23 @@ class Server(context: ActorContext[Server.Command])
       }.narrow[NotUsed]
   }
 
+  def report(replyTo: ActorRef[ServerManager.Command]): Boolean ={
+    if(next != null && nextId != -1 && prev != null && prevId != -1){
+      replyTo ! ServerManager.ServerWarmedUp
+      true
+    }
+    else{
+      false
+    }
+  }
+
   override def onMessage(msg: Command): Behavior[Command] = {
     msg match {
       case FindSuccessor(ref, id, index) =>
         // Create child session to handle successor request (concurrent)
         context.spawnAnonymous(findSuccessor(context.self, ref, id, index))
         this
-      case SetId(id) =>
+      case SetId(id, replyTo) =>
         this.id = id
         // Create table ids for server's finger table
         tableIds =
@@ -253,11 +265,18 @@ class Server(context: ActorContext[Server.Command])
             }
             n
         }).toList
-
+        // Inform server manager that id and table ids are ready
+        report(replyTo)
         this
-      case SetSuccessor(next, nextId) =>
+      case SetSuccessor(next, nextId, replyTo) =>
         this.next = next
         this.nextId = nextId
+        report(replyTo)
+        this
+      case SetPrev(prev, prevId, replyTo) =>
+        this.prev = prev
+        this.prevId = prevId
+        report(replyTo)
         this
       case UpdateTable(replyTo) =>
         context.spawnAnonymous(updateTable(context.self, replyTo))
@@ -270,10 +289,6 @@ class Server(context: ActorContext[Server.Command])
         this
       case GetId(replyTo) =>
         replyTo ! RespondId(id)
-        this
-      case SetPrev(prev, prevId) =>
-        this.prev = prev
-        this.prevId = prevId
         this
       case FoundSuccessor(successor,id, index) =>
         context.log.info(s"FOUND SUCCESSOR: $successor")
@@ -327,18 +342,23 @@ object ServerManager{
   case object TablesUpdated extends Command
   case object Test extends Command
 
+  case object ServerWarmedUp   extends Command
+  case object ServersWarmedUp extends Command
+  case object ServerReady extends Command
+  case object ServersReady extends Command
+
   final case class FileInserted(filename: String) extends Command
   final case class FoundFile(data: FileMetadata) extends Command
-   final case class FileNotFound(filename: String) extends Command 
+  final case class FileNotFound(filename: String) extends Command
 
-  private var chordRing: List[(BigInt, ActorRef[Server.Command])] = null
+  private var ring: List[(BigInt, ActorRef[Server.Command])] = null
 
   
   def testInserts(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
         val files = (0 to 300).map(x => s"FILE#$x").toList
-        val nodes = chordRing.map(x => x._2).toList
+        val nodes = ring.map(x => x._2).toList
         context.log.info(s"INSERTING ${files.size} FILE(S)...")
         // Send update table command to all servers 
         files.foreach(x =>{
@@ -407,39 +427,61 @@ object ServerManager{
       }.narrow[NotUsed]
   }
 
-  def createChordRing(chordRing: List[(BigInt, ActorRef[Server.Command])]): Unit ={
-    // Set prev of first node to be the last node (circular list)
-    var prev = chordRing.last._2
-    // Set prev id to be id of last node in the ring
-    var prevId = chordRing.last._1
-    // Set successors for nodes in chord ring
-    chordRing.foreach {
-      case (id, ref) => {
-        prev ! Server.SetSuccessor(ref, id)
-        ref ! Server.SetPrev(prev, prevId)
-        println(s"REF: $ref, ID: $id")
-        prev = ref
-        prevId = id
-      }
-    }
-  }
-
+   def createChordRing(parent: ActorRef[ServerManager.Command], servers: List[ActorRef[Server.Command]]): Behavior[NotUsed] = {
+     Behaviors
+       .setup[AnyRef] { context =>
+         // Create chord ring, sorted by ids
+         ring = servers.map(ref => (MD5.hash(ref.toString), ref)).sortBy(_._1)
+         // Sends ids to all servers in the ring
+         ring.foreach{ case(id, ref) => ref ! Server.SetId(id, context.self)}
+         // Send next and prev ids to servers in the ring
+         var prev = ring.last._2
+         var prevId = ring.last._1
+         // Inform servers about their previous and next nodes in the ring
+         ring.foreach{ case(id, ref) =>{
+           // Set the servers's successor
+           prev ! Server.SetSuccessor(ref, id, context.self)
+           // Set the servers's predecessor
+           ref ! Server.SetPrev(prev, prevId, context.self)
+           println(s"REF: $ref, ID: $id")
+           // Update previous node in the ring
+           prev = ref
+           prevId = id
+         }}
+         // Counter for the number of servers that are ready
+         var responses = 0
+         Behaviors.receiveMessage{
+           case ServerWarmedUp =>{
+             responses += 1
+             // Check if all servers have been warmed up
+             if(responses == servers.size){
+               // Inform server manager that all servers are warmed up
+               parent ! ServersWarmedUp
+               Behaviors.stopped
+             }
+             else{
+               Behaviors.same
+             }
+           }
+           case _ => Behaviors.unhandled
+         }
+       }.narrow[NotUsed]
+   }
 
   def updateTables(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
         // Send update table command to all servers
-        chordRing.foreach{ case(_, ref) =>ref ! Server.UpdateTable(context.self)}
+        ring.foreach{ case(_, ref) =>ref ! Server.UpdateTable(context.self)}
         var responses = 0
         Behaviors.receiveMessage{
           case TableUpdated(server) => {
             // Update count for responses
             responses += 1
             // Check if all servers have responded
-            if(responses == chordRing.size){
-              context.log.info(s"Servers have updated tables!")
+            if(responses == ring.size){
               // Inform parent that tables have all been created
-              parent ! TablesUpdated
+              parent ! ServersReady
               Behaviors.stopped
             }
             else{
@@ -457,41 +499,31 @@ object ServerManager{
       (context, msg) =>
         msg match {
           case Start(total) =>
-            val servers =
-              (1 to total).map(i => {
-                // Hash server name to create id
-                val ref = context.spawn(Server(), s"server:$i")
-                val id = MD5.hash(ref.toString)
-                ref ! Server.SetId(id)
-                (id, ref)
-              })
-            // Sort chord ring by server ids
-            chordRing = servers.sortBy(_._1).toList
-            // Create chord ring from server hashes
-            createChordRing(chordRing)
-            // Update Tables
-            context.spawnAnonymous(updateTables(context.self))
+            // Create servers for datacenter
+            val servers = (1 to total).map(i => context.spawn(Server(), s"server:$i")).toList
+            // Create the chord ring
+            context.spawnAnonymous(createChordRing(context.self, servers))
             Behaviors.same
-          case TablesUpdated =>
-            val ref = chordRing.head._2
-            context.log.info("************In Tables updated handler***************")
-            Thread.sleep(10000)
+          case ServersReady =>
+            context.log.info("SERVERS READY")
+            Thread.sleep(2000)
             context.spawnAnonymous(testInserts(context.self))
-            //context.log.info(s"FIRST: $ref")
-            //println(s"FILE KEY: ${MD5.hash("nailingpailin")}")
-            //ref ! Server.Insert("nailingpailin", 5000, context.self)
-            //context.self ! Test
             Behaviors.same
           case FileInserted(filename) =>
-            val last = chordRing.last._2
+            val last = ring.last._2
             last ! Lookup("nailingpailin", context.self)
+            Behaviors.same
+          case ServersWarmedUp =>
+            context.log.info("SERVERS WARMED UP")
+            // Update Tables
+            context.spawnAnonymous(updateTables(context.self))
             Behaviors.same
           case FoundFile(metadata) =>
             context.log.info(s"FOUND FILE!!, FILENAME: ${metadata.getFilename()}, SIZE: ${metadata.getSize()}")
             Behaviors.same
           case Test =>
-            val last = chordRing.last._2
-            val first = chordRing.head._2
+            val last = ring.last._2
+            val first = ring.head._2
             context.log.info(s"LAST: $last")
             //last ! Server.FindSuccessor(first, MD5.hash("nailingpailin"))
             Behaviors.same
