@@ -314,14 +314,17 @@ class Server(context: ActorContext[Server.Command])
         // Cases for inserting at this node
         if(prevId > id && key <= id){
           data(filename) = new FileMetadata(filename, size)
+          context.log.info(s"FILE INSERTED! NAME: $filename, SIZE: $size")
           replyTo ! ServerManager.FileInserted(filename)
         }
         else if(prevId > id && key > prevId){
           data(filename) = new FileMetadata(filename, size)
+          context.log.info(s"FILE INSERTED! NAME: $filename, SIZE: $size")
           replyTo ! ServerManager.FileInserted(filename)
         }
         else if(key > prevId && key <= id){
           data(filename) = new FileMetadata(filename, size)
+          context.log.info(s"FILE INSERTED! NAME: $filename, SIZE: $size")  
           replyTo ! ServerManager.FileInserted(filename)
         }
         else{
@@ -352,8 +355,7 @@ object ServerManager{
   final case class FileNotFound(filename: String) extends Command
 
   private var ring: List[(BigInt, ActorRef[Server.Command])] = null
-  val log = LoggerFactory.getLogger("mylogger")
-  
+
   def testInserts(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
@@ -499,22 +501,19 @@ object ServerManager{
       (context, msg) =>
         msg match {
           case Start(total) =>
-            //context.log.info(s"STARTING $total SERVERS")
-            log.info(s"STARTING $total SERVERS")
+            context.log.info(s"STARTING $total SERVERS")
             // Create servers for datacenter
             val servers = (1 to total).map(i => context.spawn(Server(), s"server:$i")).toList
             // Create the chord ring
             context.spawnAnonymous(createChordRing(context.self, servers))
             Behaviors.same
           case ServersWarmedUp =>
-            //context.log.info("SERVERS WARMED UP")
-            log.info("SERVERS WARMED UP")
+            context.log.info("SERVERS WARMED UP")
             // Update Tables
             context.spawnAnonymous(updateTables(context.self))
             Behaviors.same
           case ServersReady =>
-            //context.log.info("SERVERS WARMED UP")
-            log.info("SERVERS WARMED UP")
+            context.log.info("SERVERS WARMED UP")
             Thread.sleep(2000)
             context.log.debug("TESTING")
             context.spawnAnonymous(testInserts(context.self))
