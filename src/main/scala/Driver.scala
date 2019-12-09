@@ -1,5 +1,6 @@
 import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
+
 import akka.util.Timeout
 
 import scala.util.{Failure, Success}
@@ -8,13 +9,18 @@ import scala.collection.mutable
 import java.security.MessageDigest
 
 import Server.{FindSuccessor, Lookup, TestTable, UpdateTable, UpdatedTable}
+import ServerManager.HTML_LOOKUP
 import akka.NotUsed
+import akka.actor.ActorSystem
+import akka.http.scaladsl.Http
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity}
+import akka.http.scaladsl.server.Directives.{complete, concat, extractUnmatchedPath, get, pathPrefix, pathSingleSlash}
+import akka.stream.ActorMaterializer
 import javax.xml.bind.annotation.adapters.HexBinaryAdapter
 
 import scala.util.Random.shuffle
-
 import scala.compat.java8.FutureConverters.CompletionStageOps
-import scala.concurrent.Await
+import scala.concurrent.{Await, Future}
 
 object MD5{
   private val hashAlgorithm = MessageDigest.getInstance("MD5")
@@ -350,7 +356,7 @@ object ServerManager{
   final case class FileInserted(filename: String) extends Command
   final case class FoundFile(data: FileMetadata) extends Command
   final case class FileNotFound(filename: String) extends Command
-
+  final case class HTML_LOOKUP(movieName: String) extends Command
   private var ring: List[(BigInt, ActorRef[Server.Command])] = null
 
 
@@ -517,6 +523,10 @@ object ServerManager{
             Behaviors.same
           case Shutdown =>
             Behaviors.stopped
+          case HTML_LOOKUP(movieName) =>
+            ring.last._2 ! Lookup(movieName, context.self)
+            context.log.info(s"LOOKING UP MOVIE FILE $movieName")
+            Behaviors.same
         }
     }
   }
@@ -524,12 +534,48 @@ object ServerManager{
 
 
 object Driver extends App {
-  val system = ActorSystem(ServerManager(), "chord")
-  val website = new WebServer
-  website.run
+  val system = akka.actor.typed.ActorSystem(ServerManager(), "chord")
+  val manager: Behavior[ServerManager.Command] = ServerManager()
+
+  val Website = new WebServer
+  Website.run()
+
+
   // Add 5 servers to the system
   system ! ServerManager.Start(20)
   // Sleep for 7 seconds and then send shutdown signal
   Thread.sleep(30000)
   system ! ServerManager.Shutdown
+}
+
+class WebServer() {
+  def run(){
+    implicit val system = akka.actor.ActorSystem("testing")
+    implicit val materializer = ActorMaterializer()
+    // needed for the future flatMap/onComplete in the end
+    implicit val executionContext = system.dispatcher
+
+    val xmlstyle = "<?xml-stylesheet href=\"#style\"\n   type=\"text/css\"?>"
+
+    val route = get {
+      concat(
+        pathSingleSlash {
+          complete(HttpEntity(ContentTypes.`text/xml(UTF-8)`, xmlstyle + "<html><body>Hello world!</body></html>"))
+        },
+        pathPrefix("movies") {
+          extractUnmatchedPath { movieName =>
+            val movie = movieName.dropChars(1).toString()
+            ServerManager.HTML_LOOKUP(movie)
+            complete("Put function call to get movie here: " + movie)
+          }
+        }
+
+      )
+    }
+
+
+    val bindingFuture: Future[Http.ServerBinding] = Http().bindAndHandle(route, "localhost", 8080)
+    println(s"Server online at http://localhost:8080/\nPress RETURN to stop...")
+
+  }
 }
