@@ -342,6 +342,7 @@ class Server(context: ActorContext[Server.Command])
         val key = MD5.hash(filename)
         // Cases for inserting at this node
         if((prevId > id && key <= id) || (prevId > id && key > prevId) || (key > prevId && key <= id)){
+          // Store metadata in server
           data(filename) = new FileMetadata(filename, size)
           if(replyTo != null ) {replyTo ! ServerManager.FileInserted(filename)}
         }
@@ -462,7 +463,8 @@ class ServerManager extends Actor with ActorLogging{
       }.narrow[NotUsed]
   }
 
-  def createChordRing(parent: ActorRef[ServerManager.Command], servers: List[ActorRef[Server.Command]]): Behavior[NotUsed] ={
+  def createChordRing(parent: ActorRef[ServerManager.Command],
+                      servers: List[ActorRef[Server.Command]]): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
         // Create chord ring, sorted by ids

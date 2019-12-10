@@ -12,6 +12,7 @@ import akka.http.scaladsl.model._
 
 import scala.concurrent.Future
 import scala.util.{ Failure, Success }
+import scala.io.Source
 
 object WebClient {
 
@@ -19,14 +20,22 @@ object WebClient {
     implicit val system = ActorSystem()
     implicit val executionContext = system.dispatcher
 
-    val request =
-    HttpRequest(
-      method = HttpMethods.PUT,
-      uri = "http://localhost:8080/",
-      entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`, "The Great Dictator (1940)|72")
-    )
+    system.log.info("STARTING WEB CLIENT")
 
-    Http().singleRequest(request)
+    val input = Source.fromFile("src/main/resources/movies.txt")
+
+    system.log.info("SENDING PUT REQUESTS")
+    input.getLines().foreach(line => {
+      val request =
+        HttpRequest(
+          method = HttpMethods.PUT,
+          uri = "http://localhost:8080/",
+          entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`, line)
+        )
+      Http().singleRequest(request)
+    })
+
+
 
   }
 }
