@@ -53,6 +53,6 @@ class WebServerTests extends FlatSpec with Matchers {
   }
   it should "start" in {
     val manager = akka.actor.ActorSystem("testing").actorOf(Props[ServerManager], "ServerManager")
-    manager ! ServerManager.Start(20)
+    manager ! ServerManager.Start(20, true)
   }
 }//end class WebServerTests

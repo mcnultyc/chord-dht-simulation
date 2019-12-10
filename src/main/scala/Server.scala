@@ -35,7 +35,7 @@ object Server{
                            replyTo: ActorRef[ServerManager.Command]) extends Command
 
   // Commands to update server ids
-  final case class SetId(id: BigInt, replyTo: ActorRef[ServerManager.Command]) extends Command
+  final case class SetId(id: BigInt, replyTo: ActorRef[ServerManager.Command], enableTable: Boolean) extends Command
   final case class GetId(replyTo: ActorRef[Command]) extends Command
   final case class RespondId(id: BigInt) extends Command
   // Commands to update table and respond updated table
@@ -72,6 +72,8 @@ class Server(context: ActorContext[Server.Command])
   private var prev: ActorRef[Server.Command] = _
   // Cache id of the previous server in the chord ring
   private var prevId: BigInt = -1
+  // Enable table flag
+  private var enableTable: Boolean = true
   // Finger table used for routing messages
   private var table: List[(BigInt, ActorRef[Command])] = _
   // Set id as hash of context username
@@ -89,20 +91,22 @@ class Server(context: ActorContext[Server.Command])
   /* Find the node in the finger table closest to the ID.
    */
   def closestPrecedingNode(id: BigInt): ActorRef[Command] ={
-    var myRef = next
-    if(table != null) {
-      var bestRefIndex = md5Max;
-      table.foreach { case (fingerId, ref) => {
-        // Select node with highest key that can fit the id given
-        val newRefIndexDiff =  id - fingerId
-        if(newRefIndexDiff >= 0 && newRefIndexDiff < bestRefIndex) {
-          bestRefIndex = newRefIndexDiff
-          myRef = ref
-        }
-      }
+    var myRef = next // just use next to lookup nodes
+    // Use finger table only if enabled, otherwise route through next
+    if(enableTable){
+      if(table != null) {
+        var bestRefIndex = md5Max;
+        table.foreach { case (fingerId, ref) => {
+          // Select node with highest key that can fit the id given
+          val newRefIndexDiff =  id - fingerId
+          if(newRefIndexDiff >= 0 && newRefIndexDiff < bestRefIndex) {
+            bestRefIndex = newRefIndexDiff
+            myRef = ref
+          }
+        }}
       }
     }
-    myRef // just use next to lookup nodes
+    myRef
   }
 
   def lookupFile(parent: ActorRef[Command], replyTo: ActorRef[ServerManager.Command], filename: String, size: Int): Behavior[NotUsed] ={
@@ -227,8 +231,10 @@ class Server(context: ActorContext[Server.Command])
         // Create child session to handle successor request (concurrent)
         context.spawnAnonymous(findSuccessor(context.self, ref, id, index, hops+1))
         this
-      case SetId(id, replyTo) =>
+      case SetId(id, replyTo, enableTable) =>
+        // Set id and enable table flag
         this.id = id
+        this.enableTable = enableTable
         // Create table ids for server's finger table
         tableIds =
           (0 to 127).map(i => {

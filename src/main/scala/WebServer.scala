@@ -22,10 +22,20 @@ import scala.util.{Failure, Success}
 
 object WebServer{
 
+  // Helper function to try parsing an integer
   def toInt(string: String): Option[Int] ={
     try{
       Some(string.toInt)
     }catch {
+      case e: Exception => None
+    }
+  }
+
+  // Helper function to try parsing a boolean
+  def toBool(string: String): Option[Boolean] ={
+    try{
+      Some(string.toBoolean)
+    }catch{
       case e: Exception => None
     }
   }
@@ -39,10 +49,40 @@ object WebServer{
     val config = load
     // Create server manager
     val manager = system.actorOf(Props[ServerManager], "servermanager")
+    // Setup configuration
+    var numServers = config.getInt("sim1.num-servers")
+    // Flag to enable usage of the finger table
+    var enableTable = config.getBoolean("sim1.enable-table")
+    // Interval between each snapshot
+    var delay = config.getInt("sim1.snapshot-interval")
+    // Attempt to parse arguments from command line
+    if(args.size >= 1){
+      // Try to parse the number of servers argument as integer
+      val numServersOption = toInt(args(0))
+      if(numServersOption != None){
+        // Update servers to parsed integer
+        numServers = numServersOption.get
+      }
+    }
+    if(args.size >= 2){
+      // Try to parse the enable table flag as a boolean
+      val enableTableOptions = toBool(args(1))
+      if(enableTableOptions != None){
+        // Update enable table flag to parsed boolean
+        enableTable = enableTableOptions.get
+      }
+    }
+    if(args.size >= 3) {
+      // Try to parse the snapshot interval as integer
+      val delayOption = toInt(args(2))
+      if (delayOption != None) {
+        // Update snapshot interval to parsed integer
+        delay = delayOption.get
+      }
+    }
     // Start the datacenter
-    manager ! ServerManager.Start(config.getInt("sim1.num-servers"))
+    manager ! ServerManager.Start(numServers, enableTable)
     // Set up scheduler for snapshots
-    val delay = config.getInt("sim1.snapshot-interval")
     system.scheduler.scheduleWithFixedDelay(delay.seconds, delay.seconds, manager, ServerManager.WriteSnapshot)
 
     val xmlstyle = "<?xml-stylesheet href=\"#style\"\n   type=\"text/css\"?>"

@@ -24,7 +24,7 @@ object ServerManager{
   sealed trait Command
 
   // Command to start the datacenter
-  final case class Start(numServers: Int) extends Command
+  final case class Start(numServers: Int, enableTable: Boolean) extends Command
   case object Shutdown extends Command
   final case class TableUpdated(server: ActorRef[Server.Command]) extends Command
   case object TablesUpdated extends Command
@@ -126,13 +126,14 @@ class ServerManager extends Actor with ActorLogging{
   }
 
   def createChordRing(parent: ActorRef[ServerManager.Command],
-                      servers: List[ActorRef[Server.Command]]): Behavior[NotUsed] ={
+                      servers: List[ActorRef[Server.Command]],
+                      enableTable: Boolean): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
         // Create chord ring, sorted by ids
         ring = servers.map(ref => (new MD5().hash(ref.toString), ref)).sortBy(_._1)
         // Sends ids to all servers in the ring
-        ring.foreach{ case(id, ref) => ref ! Server.SetId(id, context.self)}
+        ring.foreach{ case(id, ref) => ref ! Server.SetId(id, context.self, enableTable)}
         // Send next and prev ids to servers in the ring
         var prev = ring.last._2
         var prevId = ring.last._1
@@ -227,12 +228,12 @@ class ServerManager extends Actor with ActorLogging{
   }
 
   override def receive: PartialFunction[Any, Unit] ={
-    case Start(total) =>
-      log.info(s"STARTING $total SERVERS")
+    case Start(total, enableTable) =>
+      log.info(s"STARTING $total SERVERS, TABLES ENABLED: $enableTable")
       // Create servers for datacenter
       val servers = (1 to total).map(i => context.spawn(Server(), s"server:$i")).toList
       // Create the chord ring
-      context.spawnAnonymous(createChordRing(context.self, servers))
+      context.spawnAnonymous(createChordRing(context.self, servers, enableTable))
     case ServersWarmedUp =>
       log.info("SERVERS WARMED UP")
       // Update Tables
