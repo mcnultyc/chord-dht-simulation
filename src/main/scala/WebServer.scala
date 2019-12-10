@@ -261,7 +261,7 @@ class Server(context: ActorContext[Server.Command])
   }
 
   override def onMessage(msg: Command): Behavior[Command] ={
-    msg match {
+    msg match{
       case FindSuccessor(ref, id, index, hops) =>
         // Create child session to handle successor request (concurrent)
         context.spawnAnonymous(findSuccessor(context.self, ref, id, index, hops+1))
@@ -339,13 +339,13 @@ class Server(context: ActorContext[Server.Command])
         }
         this
       case GetData(replyTo) =>
-        replyTo ! ServerManager.SendData(id, context.self.toString, data.size)
+        replyTo ! ServerManager.SendData(id, context.self.toString, data.size, totalRequests, hops / totalRequests)
         this
     }
   }
 }//end class Server
 
-object ServerManager {
+object ServerManager{
   sealed trait Command
 
   // Command to start the datacenter
@@ -366,7 +366,8 @@ object ServerManager {
   final case class HTML_LOOKUP(movieName: String) extends Command
 
   // Commands for snapshot
-  final case class SendData(id: BigInt, name: String, numFiles: Int) extends Command
+  final case class SendData(id: BigInt, name: String, numFiles: Int,
+                            totalRequests: BigInt, avgHops: BigInt) extends Command
   case object WriteSnapshot extends Command
   case object CancelAllTimers extends Command
 }//end object ServerManager
@@ -408,7 +409,7 @@ class ServerManager extends Actor with ActorLogging{
                 Thread.sleep(2000)
                 responses = 0
                 // Send lookup requests after all files have been inserted
-                files.foreach(x =>{
+                files.foreach(x => {
                   val node = shuffle(nodes).head
                   Thread.sleep(20)
                   node ! Lookup(x, context.self)
@@ -514,18 +515,18 @@ class ServerManager extends Actor with ActorLogging{
   def writeSnapshot(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     val serverData = mutable.Map[BigInt, Elem]()
     Behaviors
-      .setup[AnyRef] { context =>
+      .setup[AnyRef]{ context =>
         // Send get data command to all servers
-        ring.foreach { case (_, ref) => ref ! Server.GetData(context.self) }
+        ring.foreach{ case (_, ref) => ref ! Server.GetData(context.self) }
         var responses = 0
-        Behaviors.receiveMessage {
-          case SendData(id, name, numFiles) =>
+        Behaviors.receiveMessage{
+          case SendData(id, name, numFiles, totalRequests, numHops) =>
             // Add server data to collection
-            serverData.put(id, <server><id>{id}</id><name>{name}</name><numFiles>{numFiles}</numFiles></server>)
+            serverData.put(id, <server><id>{id}</id><name>{name}</name><numFiles>{numFiles}</numFiles><totalRequests>{totalRequests}</totalRequests><numHops>{numHops}</numHops></server>)
             // Update count for responses
             responses += 1
             // Check if all servers have responded
-            if (responses == ring.size) {
+            if (responses == ring.size){
               val servers = new NodeBuffer
               serverData.toSeq.sortBy(_._1).foreach(x => servers += x._2)
               context.log.info("GOT ALL SNAPSHOT RESPONSES. WRITING TO FILE")
@@ -538,14 +539,14 @@ class ServerManager extends Actor with ActorLogging{
               pw.close()
               Behaviors.stopped
             }
-            else {
+            else{
               Behaviors.same
             }
         }
       }.narrow[NotUsed]
   }
 
-  override def receive = {
+  override def receive ={
     case Start(total) =>
       log.info(s"STARTING $total SERVERS")
       // Create servers for datacenter
@@ -570,9 +571,9 @@ class ServerManager extends Actor with ActorLogging{
   }
 }//end class ServerManager
 
-object WebServer {
+object WebServer{
 
-  def main(args: Array[String]): Unit = {
+  def main(args: Array[String]): Unit ={
     // Create root system for actors
     implicit val system: ActorSystem = akka.actor.ActorSystem("testing")
     implicit val materializer: ActorMaterializer = ActorMaterializer()
@@ -590,13 +591,13 @@ object WebServer {
 
     val xmlstyle = "<?xml-stylesheet href=\"#style\"\n   type=\"text/css\"?>"
 
-    val route = get {
+    val route = get{
       concat(
-        pathSingleSlash {
+        pathSingleSlash{
           complete(HttpEntity(ContentTypes.`text/xml(UTF-8)`, xmlstyle + "<html><body>Hello world!</body></html>"))
         },
-        pathPrefix("movies") {
-          extractUnmatchedPath { movieName =>
+        pathPrefix("movies"){
+          extractUnmatchedPath{ movieName =>
             val movie = movieName.dropChars(1).toString()
             // Set timeout for lookup request
             implicit val timeout: Timeout = 5.seconds
