@@ -339,12 +339,6 @@ object ServerManager {
   final case class TableUpdated(server: ActorRef[Server.Command]) extends Command
   case object TablesUpdated extends Command
 
-  //final case class Test(replyTo: ActorRef[TestReply]) extends Command
-  case object Test extends Command
-  final case class TestReply(response: String) extends Command
-
-  final case class Test2(act: ActorRef[Any]) extends Command
-
   // Commands to set up the datacenter
   case object ServerWarmedUp extends Command
   case object ServersWarmedUp extends Command
@@ -575,7 +569,6 @@ object WebServer {
     val manager = system.actorOf(Props[ServerManager], "servermanager")
     // Start the datacenter
     manager ! ServerManager.Start(config.getInt("akka.num-servers"))
-
     // Set up scheduler for snapshots
     val delay = config.getInt("akka.snapshot-interval")
     system.scheduler.scheduleWithFixedDelay(delay.seconds, delay.seconds, manager, ServerManager.WriteSnapshot)
@@ -603,7 +596,6 @@ object WebServer {
             }
           }
         }
-
       )
     }
     val bindingFuture: Future[Http.ServerBinding] = Http().bindAndHandle(route, "localhost", 8080)
