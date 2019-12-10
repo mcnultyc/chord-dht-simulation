@@ -217,7 +217,8 @@ class ServerManager extends Actor with ActorLogging{
                 directory.mkdir
               val pw = new PrintWriter(new File("snapshots/snapshot_" +
                 LocalDateTime.now.format(DateTimeFormatter.ofPattern("YYYYMMdd_HHmmss")) + ".xml"))
-              pw.write(new PrettyPrinter(80, 4).format(<servers>{servers}</servers>))
+              pw.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+                new PrettyPrinter(80, 4).format(<servers>{servers}</servers>))
               pw.close()
               Behaviors.stopped
             }

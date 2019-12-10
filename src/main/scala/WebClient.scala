@@ -46,8 +46,8 @@ object WebClient {
     }
     
     system.log.info("STARTING WEB CLIENT")
-
-    val input = Source.fromFile("src/main/resources/movies.txt")
+    // Load movies from file
+    val input = Source.fromResource("movies.txt")
     val lines = input.getLines().toList
 
     system.log.info("SENDING PUT REQUESTS")
