@@ -190,7 +190,7 @@ class Server(context: ActorContext[Server.Command])
             // Check if all requests have been responded too
             if(responses == tableIds.size){
               // Sort by index
-              val table = replies.sortBy(_._3).map{ case(server, id, _) => (id, server)}
+              val table = replies.sortBy(_._3).map{ case(server, id, _) => (id, server) }
               // Send updated table to be processed
               parent ! UpdatedTable(table.toList, replyTo)
               Behaviors.stopped
@@ -208,33 +208,21 @@ class Server(context: ActorContext[Server.Command])
   def findSuccessor(parent: ActorRef[Command], replyTo: ActorRef[Command], id: BigInt, index: Int): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
-
-        if(prevId > this.id && id <= this.id){ // Case where we insert at first node
+        // Case where we insert at first node
+        if((prevId > this.id && id <= this.id) ||
+           (prevId > this.id && id > prevId) ||
+           (id > prevId && id <= this.id)){
           replyTo ! FoundSuccessor(parent, id, index)
           Behaviors.stopped
         }
-        else if(prevId > this.id && id > prevId){ // Case where insert at first node
-          replyTo ! FoundSuccessor(parent, id, index)
-          Behaviors.stopped
-        }
-        else if(id > prevId && id <= this.id){ // Case where we insert at this node
-          replyTo ! FoundSuccessor(parent, id, index)
-          Behaviors.stopped
-        }
-        else if(id > this.id && id <= nextId){ // Case where we insert at next node
-          replyTo ! FoundSuccessor(next, id, index)
-          Behaviors.stopped
-        }
-        else if(this.id > nextId && id <= nextId){ // Case where we insert at first node
-          replyTo ! FoundSuccessor(next, id, index)
-          Behaviors.stopped
-        }
-        else if(this.id > nextId && id > this.id){ // Case where we insert at first node
+        // Case where we insert at next node
+        else if((id > this.id && id <= nextId) ||
+                (this.id > nextId && id <= nextId) ||
+                (this.id > nextId && id > this.id)){
           replyTo ! FoundSuccessor(next, id, index)
           Behaviors.stopped
         }
         else{
-
           val node = closestPrecedingNode(id)
           // Case where we route request
           node ! FindSuccessor(context.self, id, index)
