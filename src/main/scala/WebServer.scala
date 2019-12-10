@@ -520,9 +520,9 @@ class ServerManager extends Actor with ActorLogging{
         ring.foreach{ case (_, ref) => ref ! Server.GetData(context.self) }
         var responses = 0
         Behaviors.receiveMessage{
-          case SendData(id, name, numFiles, totalRequests, numHops) =>
+          case SendData(id, name, numFiles, totalRequests, avgHops) =>
             // Add server data to collection
-            serverData.put(id, <server><id>{id}</id><name>{name}</name><numFiles>{numFiles}</numFiles><totalRequests>{totalRequests}</totalRequests><numHops>{numHops}</numHops></server>)
+            serverData.put(id, <server><id>{id}</id><name>{name}</name><numFiles>{numFiles}</numFiles><totalRequests>{totalRequests}</totalRequests><avgHops>{avgHops}</avgHops></server>)
             // Update count for responses
             responses += 1
             // Check if all servers have responded
