@@ -12,13 +12,12 @@ import akka.actor.typed.scaladsl.adapter._
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
 import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity}
+import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.StatusCodes._
-import akka.http.scaladsl.server.Directives.{complete, concat, extractUnmatchedPath, get, pathPrefix, pathSingleSlash}
+import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.directives.FutureDirectives.onComplete
 import akka.NotUsed
 import akka.pattern.ask
-import akka.stream.ActorMaterializer
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory.load
 import java.io.{File, PrintWriter}
@@ -591,29 +590,40 @@ object WebServer{
 
     val xmlstyle = "<?xml-stylesheet href=\"#style\"\n   type=\"text/css\"?>"
 
-    val route = get{
+    val route =
       concat(
-        pathSingleSlash{
-          complete(HttpEntity(ContentTypes.`text/xml(UTF-8)`, xmlstyle + "<html><body>Hello world!</body></html>"))
-        },
-        pathPrefix("movies"){
-          extractUnmatchedPath{ movieName =>
-            val movie = movieName.dropChars(1).toString()
-            // Set timeout for lookup request
-            implicit val timeout: Timeout = 5.seconds
-            // Create future for lookup request
-            val future = manager.ask(ServerManager.HTML_LOOKUP(movie))
-            // Create http route after lookup is ready
-            onComplete(future){
-              // Match responses from the server manager
-              case Success(ServerManager.FoundFile(filename, size)) => complete(s"FOUND! filename: $filename, size: $size")
-              case Success(ServerManager.FileNotFound(filename)) => complete(s"NOT FOUND! filename: $filename")
-              case Failure(ex) => complete((InternalServerError, s"ERROR: ${ex.getMessage}"))
+        pathPrefix("movie"~Slash) {
+          extractUnmatchedPath { movie =>
+            get {
+              println(movie)
+              // Set timeout for lookup request
+              implicit val timeout: Timeout = 5.seconds
+              // Create future for lookup request
+              val future = manager.ask(ServerManager.HTML_LOOKUP(movie.toString()))
+              // Create http route after lookup is ready
+              onComplete(future) {
+                // Match responses from the server manager
+                case Success(ServerManager.FoundFile(filename, size)) => complete(s"FOUND! filename: $filename, size: $size")
+                case Success(ServerManager.FileNotFound(filename)) => complete(s"NOT FOUND! filename: $filename")
+                case Failure(ex) => complete((InternalServerError, s"ERROR: ${ex.getMessage}"))
+                  complete(HttpEntity(ContentTypes.`text/html(UTF-8)`, movie.toString()))
+              }
             }
           }
+        },
+        put {
+          entity(as[String]) { movie => {
+            complete("Put "+movie+" onto server")
+          }
+
+          }
+        },
+        get{
+          complete("Send put requests to localhost:8080")
         }
+
       )
-    }
+
     val bindingFuture: Future[Http.ServerBinding] = Http().bindAndHandle(route, "localhost", 8080)
     println(s"Server online at http://localhost:8080/\nPress RETURN to stop...")
   }
