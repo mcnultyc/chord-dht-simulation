@@ -7,7 +7,8 @@
  */
 
 import akka.http.scaladsl.unmarshalling.Unmarshal
-import scala.concurrent.Future
+
+import scala.concurrent.{ExecutionContextExecutor, Future}
 import scala.util.Random.shuffle
 import scala.io.Source
 import scala.util.{Failure, Success}
@@ -19,8 +20,8 @@ import akka.http.scaladsl.model._
 object WebClient {
 
   def run(): Unit ={
-    implicit val system = ActorSystem()
-    implicit val executionContext = system.dispatcher
+    implicit val system: ActorSystem = ActorSystem()
+    implicit val executionContext: ExecutionContextExecutor = system.dispatcher
 
     def sendGetRequests(files: List[String]): Unit = {
       // Select a file at random for get request
@@ -33,16 +34,14 @@ object WebClient {
         )
       val future: Future[HttpResponse] = Http().singleRequest(request)
       future.onComplete {
-        case Success(response) => {
+        case Success(response) =>
           // Unmarshal response entity from http response
           Unmarshal(response.entity).to[String].onComplete {
-            case Success(data) => {
+            case Success(data) =>
               system.log.info(s"HTTP GET [$file]: $data")
               sendGetRequests(files)
-            }
             case Failure(exception) => sys.error(exception.getMessage)
           }
-        }
         case Failure(exception) => sys.error(exception.getMessage)
       }
     }

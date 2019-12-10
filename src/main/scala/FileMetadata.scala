@@ -6,6 +6,7 @@
  * Date:   Dec 10, 2019
  */
 
+
 // Class to keep metadata for inserts and lookups
 class FileMetadata(filename: String, size: Int){
   def getFilename: String ={

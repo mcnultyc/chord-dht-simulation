@@ -192,12 +192,13 @@ class ServerManager extends Actor with ActorLogging{
   }
 
   def writeSnapshot(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
-    val serverData = mutable.Map[BigInt, (Elem, Int, Float)]()
     Behaviors
       .setup[AnyRef]{ context =>
         // Send get data command to all servers
         ring.foreach{ case (_, ref) => ref ! Server.GetData(context.self) }
         var responses = 0
+        val serverData = mutable.Map[BigInt, (Elem, Int, Float)]()
+
         Behaviors.receiveMessage{
           case SendData(id, name, numFiles, totalRequests, avgHops) =>
             // Add server data to collection

@@ -6,7 +6,7 @@
  * Date:   Dec 10, 2019
  */
 
-import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
+import akka.actor.{ActorSystem, Props}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
 import akka.http.scaladsl.model.StatusCodes._
@@ -56,26 +56,26 @@ object WebServer{
     // Interval between each snapshot
     var delay = config.getInt("sim1.snapshot-interval")
     // Attempt to parse arguments from command line
-    if(args.size >= 1){
+    if(args.length >= 1){
       // Try to parse the number of servers argument as integer
       val numServersOption = toInt(args(0))
-      if(numServersOption != None){
+      if(numServersOption.isDefined){
         // Update servers to parsed integer
         numServers = numServersOption.get
       }
     }
-    if(args.size >= 2){
+    if(args.length >= 2){
       // Try to parse the enable table flag as a boolean
       val enableTableOptions = toBool(args(1))
-      if(enableTableOptions != None){
+      if(enableTableOptions.isDefined){
         // Update enable table flag to parsed boolean
         enableTable = enableTableOptions.get
       }
     }
-    if(args.size >= 3) {
+    if(args.length >= 3) {
       // Try to parse the snapshot interval as integer
       val delayOption = toInt(args(2))
-      if (delayOption != None) {
+      if (delayOption.isDefined) {
         // Update snapshot interval to parsed integer
         delay = delayOption.get
       }
@@ -96,19 +96,17 @@ object WebServer{
             // Set timeout for lookup request
             implicit val timeout: Timeout = 10.seconds
             // Create future for lookup request
-            val future = manager.ask(ServerManager.HttpLookUp(movie.toString()))
+            val future = manager.ask(ServerManager.HttpLookUp(movie))
             // Create http route after lookup is ready
             onComplete(future) {
               // Match responses from the server manager
-              case Success(ServerManager.FoundFile(filename, size)) => {
+              case Success(ServerManager.FoundFile(filename, size)) =>
                 // Create and send http response with information about request
                 complete(HttpResponse(entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`,
-                  s"FILE FOUND!")))
-              }
-              case Success(ServerManager.FileNotFound(filename)) => {
+                  "FILE FOUND!")))
+              case Success(ServerManager.FileNotFound(filename)) =>
                 complete(HttpResponse(entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`,
-                  s"FILE NOT FOUND!")))
-              }
+                  "FILE NOT FOUND!")))
               case Failure(ex) => complete((InternalServerError, s"ERROR: ${ex.getMessage}"))
             }
           }}
@@ -122,18 +120,16 @@ object WebServer{
               // Check if second value is a valid integer
               val option = toInt(tokens(1).trim)
               option match{
-                case Some(size) =>  {
+                case Some(size) =>
                   // Send insert command to server manager
                   manager ! ServerManager.HttpInsert(movie, size)
                   complete(HttpResponse(entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`,
-                    s"FILE INSERTED!")))
-                }
-                case None =>  {
+                    "FILE INSERTED!")))
+                case None =>
                   system.log.info(s"ERROR: INCORRECT SIZE! FILENAME: $movie, SIZE: ${tokens(1)}")
                   // Send parsing error message back to client
                   complete(HttpResponse(entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`,
                     s"ERROR: INCORRECT SIZE! SIZE: ${tokens(1)}")))
-                }
               }
             }
             else{

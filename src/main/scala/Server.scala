@@ -96,14 +96,14 @@ class Server(context: ActorContext[Server.Command])
     if(enableTable){
       if(table != null) {
         var bestRefIndex = md5Max;
-        table.foreach { case (fingerId, ref) => {
+        table.foreach { case (fingerId, ref) =>
           // Select node with highest key that can fit the id given
           val newRefIndexDiff =  id - fingerId
           if(newRefIndexDiff >= 0 && newRefIndexDiff < bestRefIndex) {
             bestRefIndex = newRefIndexDiff
             myRef = ref
           }
-        }}
+        }
       }
     }
     myRef
@@ -127,7 +127,6 @@ class Server(context: ActorContext[Server.Command])
         }
       }.narrow[NotUsed]
   }
-
 
   def insertFile(parent: ActorRef[Command], replyTo: ActorRef[ServerManager.Command], filename: String, size: Int): Behavior[NotUsed] ={
     Behaviors
