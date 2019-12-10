@@ -139,7 +139,23 @@ class Server(context: ActorContext[Server.Command])
    */
   def closestPrecedingNode(id: BigInt): ActorRef[Command] ={
     // TODO check finger table for closest preceding node
-    next // just use next to lookup nodes
+
+    var myRef = next
+    if(table != null) {
+      var bestRefIndex = md5Max;
+      table.foreach { case (fingerId, ref) => {
+        // Select node with highest key that can fit the id given
+        val newRefIndexDiff =  id - fingerId
+
+        if(newRefIndexDiff >= 0 && newRefIndexDiff < bestRefIndex)
+        {
+          bestRefIndex = newRefIndexDiff
+          myRef = ref
+        }
+      }
+      }
+    }
+    myRef // just use next to lookup nodes
   }
 
   def lookupFile(parent: ActorRef[Command], replyTo: ActorRef[ServerManager.Command], filename: String, size: Int): Behavior[NotUsed] ={
