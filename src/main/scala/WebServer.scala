@@ -658,10 +658,14 @@ object WebServer{
                   manager ! ServerManager.HttpInsert(movie, size)
                   complete("PUT "+movie+" ONTO SERVER")
                 }
-                case None =>  complete("ERROR: INCORRECT SIZE")
+                case None =>  {
+                  system.log.info(s"ERROR: INCORRECT SIZE! FILENAME: $movie, SIZE: ${tokens(1)}")
+                  complete("ERROR: INCORRECT SIZE")
+                }
               }
             }
             else{
+              system.log.info(s"ERROR: MISSING REQUIRED ARGUMENTS! INPUT: $input")
               complete("ERROR: MISSING REQUIRED ARGUMENTS")
             }
           }}
