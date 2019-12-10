@@ -41,6 +41,8 @@ object WebClient {
        }
     })
 
+    system.log.info("SENDING GET REQUESTS")
+
     val request =
       HttpRequest(
         method = HttpMethods.GET,

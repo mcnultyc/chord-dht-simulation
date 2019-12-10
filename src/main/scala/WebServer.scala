@@ -33,7 +33,7 @@ import scala.util.Random.shuffle
 import scala.xml.{Elem, NodeBuffer, PrettyPrinter}
 
 
-object MD5{
+class MD5{
   private val hashAlgorithm = MessageDigest.getInstance("MD5")
   private val hexAdapter = new HexBinaryAdapter()
   def hash(value: String): BigInt ={
@@ -157,7 +157,7 @@ class Server(context: ActorContext[Server.Command])
   def lookupFile(parent: ActorRef[Command], replyTo: ActorRef[ServerManager.Command], filename: String, size: Int): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
-        val key = MD5.hash(filename)
+        val key = new MD5().hash(filename)
         // Find node that should have file
         parent ! FindSuccessor(context.self, key, -1, -1)
 
@@ -177,7 +177,7 @@ class Server(context: ActorContext[Server.Command])
   def insertFile(parent: ActorRef[Command], replyTo: ActorRef[ServerManager.Command], filename: String, size: Int): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
-        val key = MD5.hash(filename)
+        val key = new MD5().hash(filename)
         // Find node to insert file in
         parent ! FindSuccessor(context.self, key, -1, -1)
         Behaviors.receiveMessage{
@@ -340,7 +340,7 @@ class Server(context: ActorContext[Server.Command])
         }
         this
       case Insert(filename, size, replyTo) =>
-        val key = MD5.hash(filename)
+        val key = new MD5().hash(filename)
         // Cases for inserting at this node
         if((prevId > id && key <= id) || (prevId > id && key > prevId) || (key > prevId && key <= id)){
           // Store metadata in server
@@ -469,7 +469,7 @@ class ServerManager extends Actor with ActorLogging{
     Behaviors
       .setup[AnyRef]{ context =>
         // Create chord ring, sorted by ids
-        ring = servers.map(ref => (MD5.hash(ref.toString), ref)).sortBy(_._1)
+        ring = servers.map(ref => (new MD5().hash(ref.toString), ref)).sortBy(_._1)
         // Sends ids to all servers in the ring
         ring.foreach{ case(id, ref) => ref ! Server.SetId(id, context.self)}
         // Send next and prev ids to servers in the ring
@@ -577,8 +577,8 @@ class ServerManager extends Actor with ActorLogging{
     case ServersReady =>
       log.info("SERVERS READY")
       Thread.sleep(2000)
-      log.info("TESTING")
-      context.spawnAnonymous(testInserts(context.self))
+      //log.info("TESTING")
+      //context.spawnAnonymous(testInserts(context.self))
     case HttpLookUp(movie) =>
       // Select a random node to route request
       val node = shuffle(ring).head._2
@@ -651,7 +651,7 @@ object WebServer{
               // Parse the movie name and size from the input
               val movie = tokens(0)
               // Check if second value is a valid integer
-              val option = toInt(tokens(1))
+              val option = toInt(tokens(1).trim)
               option match{
                 case Some(size) =>  {
                   // Send insert command to server manager
