@@ -631,14 +631,21 @@ object WebServer{
           entity(as[String]){ movie =>{
             println(movie+"**********************")
             // Set timeout for lookup request
-            implicit val timeout: Timeout = 5.seconds
+            implicit val timeout: Timeout = 10.seconds
             // Create future for lookup request
             val future = manager.ask(ServerManager.HttpLookUp(movie.toString()))
             // Create http route after lookup is ready
             onComplete(future) {
               // Match responses from the server manager
-              case Success(ServerManager.FoundFile(filename, size)) => complete(s"FOUND! filename: $filename, size: $size")
-              case Success(ServerManager.FileNotFound(filename)) => complete(s"NOT FOUND! filename: $filename")
+              case Success(ServerManager.FoundFile(filename, size)) => {
+                // Create and send http response with information about request
+                complete(HttpResponse(entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`,
+                  s"FILE FOUND!")))
+              }
+              case Success(ServerManager.FileNotFound(filename)) => {
+                complete(HttpResponse(entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`,
+                  s"FILE NOT FOUND!")))
+              }
               case Failure(ex) => complete((InternalServerError, s"ERROR: ${ex.getMessage}"))
             }
           }}
@@ -656,17 +663,22 @@ object WebServer{
                 case Some(size) =>  {
                   // Send insert command to server manager
                   manager ! ServerManager.HttpInsert(movie, size)
-                  complete("PUT "+movie+" ONTO SERVER")
+                  complete(HttpResponse(entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`,
+                    s"FILE INSERTED!")))
                 }
                 case None =>  {
                   system.log.info(s"ERROR: INCORRECT SIZE! FILENAME: $movie, SIZE: ${tokens(1)}")
-                  complete("ERROR: INCORRECT SIZE")
+                  // Send parsing error message back to client
+                  complete(HttpResponse(entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`,
+                    s"ERROR: INCORRECT SIZE! SIZE: ${tokens(1)}")))
                 }
               }
             }
             else{
               system.log.info(s"ERROR: MISSING REQUIRED ARGUMENTS! INPUT: $input")
-              complete("ERROR: MISSING REQUIRED ARGUMENTS")
+              // Send missing arguments error back to client
+              complete(HttpResponse(entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`,
+                "ERROR: MISSING REQUIRED ARGUMENTS")))
             }
           }}
         },

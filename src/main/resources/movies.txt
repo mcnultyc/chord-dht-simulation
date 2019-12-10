@@ -63,7 +63,7 @@ Amelie (2001) (Fr.)|234
 A Clockwork Orange (1971)|78
 Lawrence of Arabia (1962)|64
 Amadeus (1984)|24
-Double Indemnity (1944)987
+Double Indemnity (1944)|987
 Eternal Sunshine of the Spotless Mind (2004)|654
 Taxi Driver (1976)|987
 To Kill A Mockingbird (1962)|867

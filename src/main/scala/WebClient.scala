@@ -9,12 +9,26 @@
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
+import akka.http.scaladsl.unmarshalling.Unmarshal
+
 import scala.concurrent.Future
 import scala.util.Random.shuffle
 import scala.io.Source
 import scala.util.{Failure, Success}
 
+import akka.actor.ActorSystem
+import akka.http.scaladsl.Http
+import akka.http.scaladsl.model._
+import akka.stream.ActorMaterializer
+import akka.stream.scaladsl._
+
+
+
 object WebClient {
+
+
+
+
 
   def run(): Unit ={
     implicit val system = ActorSystem()
@@ -27,53 +41,57 @@ object WebClient {
 
     system.log.info("SENDING PUT REQUESTS")
 
+    // Send put requests for each line in the file
     lines.foreach(line => {
       val request =
         HttpRequest(
           method = HttpMethods.PUT,
           uri = "http://localhost:8080/",
-          entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`, line)
+          entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`, line) // Send entire line
         )
        val future: Future[HttpResponse] = Http().singleRequest(request)
        future.onComplete{
-         case Success(_) => system.log.info(s"HTTP PUT [$line] REQUEST SUCCEEDED")
+         case Success(response) => {
+           // Unmarshal response entity from http response
+            Unmarshal(response.entity).to[String].onComplete{
+              // Log response from web servers
+              case Success(data) => system.log.info(s"HTTP PUT [$line]: $data")
+              case Failure(exception) => sys.error(exception.getMessage)
+            }
+         }
          case Failure(exception) => sys.error(exception.getMessage)
        }
     })
 
     system.log.info("SENDING GET REQUESTS")
 
-    val request =
-      HttpRequest(
-        method = HttpMethods.GET,
-        uri = "http://localhost:8080/",
-        entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`, "testing")
-      )
-
-    system.log.info("messages all sent")
-    /*
-    val future: Future[HttpResponse] = Http().singleRequest(request)
-    future.onComplete{
-      case Success(_) => system.log.info("HTTP GET REQUEST SUCCEEDED")
-      case Failure(exception) => sys.error(exception.getMessage)
-    }
-     */
-
-    /*
+    // Get the list of files from the file
     val files = lines.map(line => line.split("\\|")(0))
+    while(true){
 
-    (0 to 2000).foreach( _ =>{
-      val file = shuffle(files).head
-      val request =
-        HttpRequest(
-          method = HttpMethods.GET,
-          uri = "http://localhost:8080/",
-          entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`, file)
-        )
-      Http().singleRequest(request)
-    })
+        (1 to 20).foreach( x =>{
+          // Select a file at random for get request
+          val file = shuffle(files).head
+          val request =
+            HttpRequest(
+              method = HttpMethods.GET,
+              uri = "http://localhost:8080/",
+              entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`, file)
+            )
 
-     */
-
+          val future: Future[HttpResponse] = Http().singleRequest(request)
+          future.onComplete{
+            case Success(response) => {
+              // Unmarshal response entity from http response
+              Unmarshal(response.entity).to[String].onComplete{
+                case Success(data) => system.log.info(s"HTTP GET [$file]: $data")
+                case Failure(exception) => sys.error(exception.getMessage)
+              }
+            }
+            case Failure(exception) => sys.error(exception.getMessage)
+          }
+        })// End of foreach
+        Thread.sleep(2000)
+    }
   }
 }
