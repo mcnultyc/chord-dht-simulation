@@ -521,7 +521,10 @@ class ServerManager extends Actor with ActorLogging{
               val servers = new NodeBuffer
               serverData.toSeq.sortBy(_._1).foreach(x => servers += x._2)
               context.log.info("GOT ALL SNAPSHOT RESPONSES. WRITING TO FILE")
-              val pw = new PrintWriter(new File("snapshot_" +
+              val directory = new File("snapshots")
+              if (!directory.exists)
+                directory.mkdir
+              val pw = new PrintWriter(new File("snapshots/snapshot_" +
                 LocalDateTime.now.format(DateTimeFormatter.ofPattern("YYYYMMdd_HHmmss")) + ".xml"))
               pw.write(new PrettyPrinter(80, 4).format(<servers>{servers}</servers>))
               pw.close()
