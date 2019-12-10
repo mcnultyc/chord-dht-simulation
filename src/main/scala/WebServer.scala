@@ -583,9 +583,9 @@ object WebServer {
     // Create server manager
     val manager = system.actorOf(Props[ServerManager], "servermanager")
     // Start the datacenter
-    manager ! ServerManager.Start(config.getInt("akka.num-servers"))
+    manager ! ServerManager.Start(config.getInt("sim1.num-servers"))
     // Set up scheduler for snapshots
-    val delay = config.getInt("akka.snapshot-interval")
+    val delay = config.getInt("sim1.snapshot-interval")
     system.scheduler.scheduleWithFixedDelay(delay.seconds, delay.seconds, manager, ServerManager.WriteSnapshot)
 
     val xmlstyle = "<?xml-stylesheet href=\"#style\"\n   type=\"text/css\"?>"
