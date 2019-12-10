@@ -547,7 +547,7 @@ class ServerManager extends Actor with ActorLogging{
       }.narrow[NotUsed]
   }
 
-  override def receive ={
+  override def receive: PartialFunction[Any, Unit] ={
     case Start(total) =>
       log.info(s"STARTING $total SERVERS")
       // Create servers for datacenter
@@ -577,7 +577,6 @@ object WebServer{
   def main(args: Array[String]): Unit ={
     // Create root system for actors
     implicit val system: ActorSystem = akka.actor.ActorSystem("testing")
-    implicit val materializer: ActorMaterializer = ActorMaterializer()
     // Needed for the future flatMap/onComplete in the end
     implicit val executionContext: ExecutionContextExecutor = system.dispatcher
     // Load the config file
