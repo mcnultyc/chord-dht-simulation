@@ -95,7 +95,7 @@ object Server{
   final case class Insert(filename: String, size: Int, replyTo: ActorRef[ServerManager.Command]) extends Command
 
   final case class Lookup(filename: String, replyTo: ActorRef[ServerManager.Command]) extends Command
-  final case class GetFile(filename: String, replyTo: ActorRef[ServerManager.Command]) extends Command
+  final case class GetFile(filename: String, replyTo: ActorRef[ServerManager.Command], hops: Int) extends Command
 
   //final case class FoundFile(data: FileMetadata) extends Command
   final case class FileNotFound(filename: String) extends Command
@@ -163,11 +163,10 @@ class Server(context: ActorContext[Server.Command])
 
         Behaviors.receiveMessage{
           case FoundSuccessor(successor, id, index, hops) =>
-            context.log.info(s"FILE FOUND! NAME: $filename, SIZE: $size, HOPS: $hops")
             // Update stats for node
             parent ! UpdateStats(hops)
             // Get file from selected node and forward reply
-            successor ! GetFile(filename, replyTo)
+            successor ! GetFile(filename, replyTo, hops)
             Behaviors.stopped
           case _ => Behaviors.unhandled
         }
@@ -326,14 +325,16 @@ class Server(context: ActorContext[Server.Command])
         // Route request to lookup file
         context.spawnAnonymous(lookupFile(context.self, replyTo, filename, 10))
         this
-      case GetFile(filename, replyTo) =>
+      case GetFile(filename, replyTo, hops) =>
         // Check if the current node has the file requested
         val metadata = data.getOrElse(filename, null)
         if(metadata != null){
+          context.log.info(s"FILE FOUND! NAME: $filename, SIZE: ${metadata.getSize}, HOPS: $hops")
           // Respond with the file metadata
           replyTo ! ServerManager.FoundFile(metadata.getFilename, metadata.getSize)
         }
         else{
+          context.log.info(s"FILE NOT FOUND! NAME: $filename")
           // Respond file not found
           replyTo ! ServerManager.FileNotFound(filename)
         }
@@ -596,6 +597,15 @@ class ServerManager extends Actor with ActorLogging{
 
 object WebServer{
 
+
+  def toInt(string: String): Option[Int] ={
+    try{
+      Some(string.toInt)
+    }catch {
+      case e: Exception => None
+    }
+  }
+
   def main(args: Array[String]): Unit ={
     // Create root system for actors
     implicit val system: ActorSystem = akka.actor.ActorSystem("testing")
@@ -617,36 +627,44 @@ object WebServer{
 
     val route =
       concat(
-        pathPrefix("movie"~Slash) {
-          extractUnmatchedPath { movie =>
-            get {
-              println(movie)
-              // Set timeout for lookup request
-              implicit val timeout: Timeout = 5.seconds
-              // Create future for lookup request
-              val future = manager.ask(ServerManager.HttpLookUp(movie.toString()))
-              // Create http route after lookup is ready
-              onComplete(future) {
-                // Match responses from the server manager
-                case Success(ServerManager.FoundFile(filename, size)) => complete(s"FOUND! filename: $filename, size: $size")
-                case Success(ServerManager.FileNotFound(filename)) => complete(s"NOT FOUND! filename: $filename")
-                case Failure(ex) => complete((InternalServerError, s"ERROR: ${ex.getMessage}"))
-                  complete(HttpEntity(ContentTypes.`text/html(UTF-8)`, movie.toString()))
-              }
+        get {
+          entity(as[String]){ movie =>{
+            println(movie+"**********************")
+            // Set timeout for lookup request
+            implicit val timeout: Timeout = 5.seconds
+            // Create future for lookup request
+            val future = manager.ask(ServerManager.HttpLookUp(movie.toString()))
+            // Create http route after lookup is ready
+            onComplete(future) {
+              // Match responses from the server manager
+              case Success(ServerManager.FoundFile(filename, size)) => complete(s"FOUND! filename: $filename, size: $size")
+              case Success(ServerManager.FileNotFound(filename)) => complete(s"NOT FOUND! filename: $filename")
+              case Failure(ex) => complete((InternalServerError, s"ERROR: ${ex.getMessage}"))
             }
-          }
+          }}
         },
         put {
           entity(as[String]) { input => {
-            // TODO insert movie here through server manager
-            // Parse the movie name and size from the input
-            val movie = input.split("\\|")(0)
-            val size = input.split("\\|")(1).toInt
-            manager ! ServerManager.HttpInsert(movie, size)
-            println(movie, size)
-            complete("Put "+movie+" onto server")
-          }
-          }
+            println(input)
+            val tokens = input.split("\\|")
+            if(tokens.size == 2){
+              // Parse the movie name and size from the input
+              val movie = tokens(0)
+              // Check if second value is a valid integer
+              val option = toInt(tokens(1))
+              option match{
+                case Some(size) =>  {
+                  // Send insert command to server manager
+                  manager ! ServerManager.HttpInsert(movie, size)
+                  complete("PUT "+movie+" ONTO SERVER")
+                }
+                case None =>  complete("ERROR: INCORRECT SIZE")
+              }
+            }
+            else{
+              complete("ERROR: MISSING REQUIRED ARGUMENTS")
+            }
+          }}
         },
         extractUnmatchedPath { anything => {
           get {
