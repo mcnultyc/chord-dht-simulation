@@ -1,0 +1,100 @@
+The Shawshank Redemption (1994)|1
+The Godfather (1972)|2
+The Godfather, Part II (1974)|23
+The Dark Knight (2009)|25
+12 Angry Men (1957)|23
+Schindler's List (1993)|27
+Pulp Fiction (1994)|28
+The Lord of the Rings: The Return of the King (2003)|23
+The Good, the Bad, and the Ugly (1966) (It.)|62
+Fight Club (1999)|82
+The Lord of the Rings: The Fellowship of the Ring (2001)|29
+Forrest Gump (1994)|25
+Star Wars: Episode V: The Empire Strikes Back (1980)|24
+Inception (2010)|23
+The Lord of the Rings: The Two Towers (2002)|27
+One Flew Over The Cuckoo's Nest (1975)|24
+GoodFellas (1990)|24
+The Matrix (1999)|28
+The Seven Samurai (1954) (Jp.)|29
+Star Wars (1977)|20
+City of God (2002, Brazil/Fr.)|29
+Se7en (1995)|24
+The Silence of the Lambs (1991)|28
+It's A Wonderful Life (1946)|92
+Life is Beautiful (1997) (It.)|20
+The Usual Suspects (1995)|52
+Leon, aka The Professional (1994) (Fr.)|62
+Saving Private Ryan (1998)|72
+Spirited Away (2001, Jp.)|82
+Apocalypse Now (1979)|82
+Alien (1979)|52
+The Great Dictator (1940)|72
+Sunset Boulevard (1950)|92
+Cinema Paradiso (1988)|92
+Dr. Strangelove or: How I Learned To Stop Worrying and Love the Bomb (1964)|42
+The Lives of Others (2006, Germ.)|62
+Grave of the Fireflies (1988, Jp.)|72
+Paths of Glory (1957)|82
+Django Unchained (2012)|92
+The Shining (1980)|32
+WALL-E (2008)|22
+American Beauty (1999)|12
+Princess Mononoke (1997, Jp.)|12
+The Dark Knight Rises (2012)|2
+Blade Runner 2049 (2017)|52
+Oldboy (2003, S.Kor.)|22
+Witness For the Prosecution (1957)|27
+Aliens (1986)|24
+Once Upon a Time in America (1984)|25
+Das Boot (1981) (Ger.)|276
+Dangal (2016)|29
+Citizen Kane (1941)|23
+Vertigo (1958)|27
+North By Northwest (1959)|22
+Star Wars: Episode VI - Return of the Jedi (1983)|272
+Braveheart (1995)|21
+Reservoir Dogs (1992)|52
+M (1931) (Ger.)|54
+Requiem for a Dream (2000)|877
+Your Name (2016, Jp.)|68
+Like Stars on Earth (2007, India)|9
+Amelie (2001) (Fr.)|234
+A Clockwork Orange (1971)|78
+Lawrence of Arabia (1962)|64
+Amadeus (1984)|24
+Double Indemnity (1944)987
+Eternal Sunshine of the Spotless Mind (2004)|654
+Taxi Driver (1976)|987
+To Kill A Mockingbird (1962)|867
+Full Metal Jacket (1987)|654
+Singin' In The Rain (1952)|876
+2001: A Space Odyssey (1968)|98
+Toy Story (1995)|456
+3 Idiots (2009, India)|2212
+The Sting (1973)|218
+Toy Story 3 (2010)|89
+Inglourious Basterds (2009)|284
+The Bicycle Thief (1948, It.)|25
+The Kid (1921)|215
+Coco (2017)|566
+American History X (1998)|264
+Interstellar (2014)|435
+Once Upon a Time in the West (1969) (It.)|53
+The Green Mile (1999)|76
+Psycho (1960)|98
+Casablanca (1942)|45
+City Lights (1931)|768
+Intouchables (2011)|87
+Modern Times (1936)|89
+The Pianist (2002)|54
+Raiders of the Lost Ark (1981)|76
+The Departed (2006)|87
+Rear Window (1954)|34
+Terminator 2: Judgment Day (1991)|34
+Back to the Future (1985)|657
+Whiplash (2014)|764
+Gladiator (2000)|68
+The Lion King (1994)|76
+The Prestige (2006)|545
+Memento (2000)|767

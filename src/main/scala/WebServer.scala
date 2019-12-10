@@ -331,7 +331,7 @@ class Server(context: ActorContext[Server.Command])
         // Cases for inserting at this node
         if((prevId > id && key <= id) || (prevId > id && key > prevId) || (key > prevId && key <= id)){
           data(filename) = new FileMetadata(filename, size)
-          replyTo ! ServerManager.FileInserted(filename)
+          if(replyTo != null ) {replyTo ! ServerManager.FileInserted(filename)}
         }
         else{
           context.spawnAnonymous(insertFile(context.self, replyTo, filename, size))
@@ -363,7 +363,9 @@ object ServerManager{
   final case class FileInserted(filename: String) extends Command
   final case class FoundFile(filename: String, size: Int) extends Command
   final case class FileNotFound(filename: String) extends Command
-  final case class HTML_LOOKUP(movieName: String) extends Command
+  // Commands to be used by the web server
+  final case class HttpLookUp(movie: String) extends Command
+  final case class HttpInsert(movie: String, size: Int) extends Command
 
   // Commands for snapshot
   final case class SendData(id: BigInt, name: String, numFiles: Int,
@@ -383,7 +385,7 @@ class ServerManager extends Actor with ActorLogging{
         val files = (0 to 300).map(x => s"FILE-$x").toList
         val nodes = ring.map(x => x._2)
         context.log.info(s"INSERTING ${files.size} FILE(S)...")
-        // Send update table command to all servers 
+        // Send update table command to all servers
         files.foreach(x =>{
           val node = shuffle(nodes).head
           Thread.sleep(20)
@@ -562,8 +564,15 @@ class ServerManager extends Actor with ActorLogging{
       Thread.sleep(2000)
       log.info("TESTING")
       context.spawnAnonymous(testInserts(context.self))
-    case HTML_LOOKUP(movieName) =>
-      ring.last._2 ! Lookup(movieName, sender())
+    case HttpLookUp(movie) =>
+      // Select a random node to route request
+      val node = shuffle(ring).head._2
+      node ! Server.Lookup(movie, sender())
+    case HttpInsert(movie, size) =>
+      // Select a random node to route request
+      val node = shuffle(ring).head._2
+      // Insert node in datacenter without response
+      node ! Server.Insert(movie, size, null)
     case WriteSnapshot =>
       context.spawnAnonymous(writeSnapshot(context.self))
     case Shutdown =>
@@ -601,7 +610,7 @@ object WebServer{
               // Set timeout for lookup request
               implicit val timeout: Timeout = 5.seconds
               // Create future for lookup request
-              val future = manager.ask(ServerManager.HTML_LOOKUP(movie.toString()))
+              val future = manager.ask(ServerManager.HttpLookUp(movie.toString()))
               // Create http route after lookup is ready
               onComplete(future) {
                 // Match responses from the server manager
@@ -614,8 +623,13 @@ object WebServer{
           }
         },
         put {
-          entity(as[String]) { movie => {
+          entity(as[String]) { input => {
             // TODO insert movie here through server manager
+            // Parse the movie name and size from the input
+            val movie = input.split("\\|")(0)
+            val size = input.split("\\|")(1).toInt
+            manager ! ServerManager.HttpInsert(movie, size)
+            println(movie, size)
             complete("Put "+movie+" onto server")
           }
           }
