@@ -14,7 +14,7 @@
                             
 ##### Main Driver Class:        Driver in Driver.scala
 
-##### Required Libraries:
+##### Required Library Dependencies:
 ```
   "ch.qos.logback" % "logback-classic" % "1.2.3",
   "com.typesafe.akka" %% "akka-actor-testkit-typed" % akkaVersion % Test,
