@@ -364,7 +364,6 @@ object ServerManager {
   case object ServersReady extends Command
 
   final case class FileInserted(filename: String) extends Command
-  //final case class FoundFile(data: FileMetadata) extends Command
   final case class FoundFile(filename: String, size: Int) extends Command
   final case class FileNotFound(filename: String) extends Command
   final case class HTML_LOOKUP(movieName: String) extends Command
@@ -495,7 +494,7 @@ class ServerManager extends Actor with ActorLogging{
     Behaviors
       .setup[AnyRef]{ context =>
         // Send update table command to all servers
-        ring.foreach{ case(_, ref) =>ref ! Server.UpdateTable(context.self)}
+        ring.foreach{ case(_, ref) => ref ! Server.UpdateTable(context.self) }
         var responses = 0
         Behaviors.receiveMessage{
           case TableUpdated(server) =>
@@ -579,7 +578,7 @@ object WebServer {
     // Create root system for actors
     implicit val system: ActorSystem = akka.actor.ActorSystem("testing")
     implicit val materializer: ActorMaterializer = ActorMaterializer()
-    // needed for the future flatMap/onComplete in the end
+    // Needed for the future flatMap/onComplete in the end
     implicit val executionContext: ExecutionContextExecutor = system.dispatcher
     // Load the config file
     val config = load
