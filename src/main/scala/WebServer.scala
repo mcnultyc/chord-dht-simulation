@@ -5,7 +5,10 @@ import akka.util.Timeout
 import scala.util.{Failure, Success}
 import scala.concurrent.duration._
 import scala.collection.mutable
+import java.io.{File, PrintWriter}
 import java.security.MessageDigest
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 import Server.{FindSuccessor, Lookup, TestTable, UpdateTable, UpdatedTable}
 import ServerManager.HTML_LOOKUP
@@ -28,9 +31,11 @@ import akka.pattern.ask
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
 import spray.json.DefaultJsonProtocol._
 import akka.http.scaladsl.marshalling.Marshal
-import akka.http.scaladsl.server.StandardRoute
 
 import akka.http.scaladsl.model.StatusCodes._
+import scala.xml._
+import com.typesafe.config.ConfigFactory.load
+
 
 object MD5{
   private val hashAlgorithm = MessageDigest.getInstance("MD5")
@@ -95,7 +100,8 @@ object Server{
   //final case class FoundFile(data: FileMetadata) extends Command
   final case class FileNotFound(filename: String) extends Command
 
-
+  // Command for snapshot
+  final case class GetData(replyTo: ActorRef[ServerManager.Command]) extends Command
 
   case object TestTable extends Command
 
@@ -348,6 +354,9 @@ class Server(context: ActorContext[Server.Command])
           context.spawnAnonymous(insertFile(context.self, replyTo, filename, size))
         }
         this
+      case GetData(replyTo) =>
+        replyTo ! ServerManager.SendData(id, context.self.toString)
+        this
     }
   }
 
@@ -380,6 +389,11 @@ object ServerManager {
   final case class FoundFile(filename: String, size: Int) extends Command
   final case class FileNotFound(filename: String) extends Command
   final case class HTML_LOOKUP(movieName: String) extends Command
+
+  // Commands for snapshot
+  final case class SendData(id: BigInt, name: String) extends Command
+  case object WriteSnapshot extends Command
+  case object CancelAllTimers extends Command
 }
 
 class ServerManager extends Actor with ActorLogging{
@@ -528,6 +542,42 @@ class ServerManager extends Actor with ActorLogging{
       }.narrow[NotUsed]
   }
 
+  def writeSnapshot(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] = {
+    val serverData = mutable.Map[BigInt, Elem]()
+    Behaviors
+      .setup[AnyRef] { context =>
+        // Send get data command to all servers
+        ring.foreach { case (_, ref) => ref ! Server.GetData(context.self) }
+        var responses = 0
+        Behaviors.receiveMessage {
+          case SendData(id, name) =>
+            // Add server data to collection
+            serverData.put(id, <server><id>{id}</id><name>{name}</name></server>)
+
+            // Update count for responses
+            //context.log.info("GETTING SNAPSHOT RESPONSES")
+            responses += 1
+            // Check if all servers have responded
+            if (responses == ring.size) {
+              val servers = new xml.NodeBuffer
+              serverData.toSeq.sortBy(_._1).foreach(x => servers += x._2)
+              context.log.info("GOT ALL SNAPSHOT RESPONSES. WRITING TO FILE")
+              val pw = new PrintWriter(new File("snapshot_" +
+                LocalDateTime.now.format(DateTimeFormatter.ofPattern("YYYYMMdd_HHmmss")) + ".xml"))
+              pw.write(new PrettyPrinter(80, 4).format(<servers>{servers}</servers>))
+              pw.close()
+              context.log.info("All servers have sent data!")
+              // Inform parent that all responses have been received
+              //parent ! ServerManager.CancelAllTimers
+              Behaviors.stopped
+            }
+            else {
+              Behaviors.same
+            }
+        }
+      }.narrow[NotUsed]
+  }
+
   override def receive = {
     case Start(total) =>
       log.info(s"STARTING $total SERVERS")
@@ -549,11 +599,12 @@ class ServerManager extends Actor with ActorLogging{
     //Behaviors.same
     case HTML_LOOKUP(movieName) =>
       ring.last._2 ! Lookup(movieName, sender())
+    case WriteSnapshot =>
+      context.spawnAnonymous(writeSnapshot(context.self))
     case Shutdown =>
       //Behaviors.stopped
       context.stop(self)
   }
-
 }
 
 object WebServer {
@@ -565,10 +616,16 @@ object WebServer {
     implicit val materializer = ActorMaterializer()
     // needed for the future flatMap/onComplete in the end
     implicit val executionContext = system.dispatcher
+    // Load the config file
+    val config = load
     // Create server manager
     val manager = system.actorOf(Props[ServerManager], "servermanager")
     // Start the datacenter
-    manager ! ServerManager.Start(20)
+    manager ! ServerManager.Start(config.getInt("akka.num-servers"))
+
+    // Set up scheduler for snapshots
+    val delay = config.getInt("akka.snapshot-interval")
+    system.scheduler.scheduleWithFixedDelay(delay.seconds, delay.seconds, manager, ServerManager.WriteSnapshot)
 
     val xmlstyle = "<?xml-stylesheet href=\"#style\"\n   type=\"text/css\"?>"
 
