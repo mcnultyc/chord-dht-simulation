@@ -138,17 +138,13 @@ class Server(context: ActorContext[Server.Command])
   /* Find the node in the finger table closest to the ID.
    */
   def closestPrecedingNode(id: BigInt): ActorRef[Command] ={
-    // TODO check finger table for closest preceding node
-
     var myRef = next
     if(table != null) {
       var bestRefIndex = md5Max;
       table.foreach { case (fingerId, ref) => {
         // Select node with highest key that can fit the id given
         val newRefIndexDiff =  id - fingerId
-
-        if(newRefIndexDiff >= 0 && newRefIndexDiff < bestRefIndex)
-        {
+        if(newRefIndexDiff >= 0 && newRefIndexDiff < bestRefIndex) {
           bestRefIndex = newRefIndexDiff
           myRef = ref
         }

@@ -26,13 +26,7 @@ object WebClient {
       entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`, "The Great Dictator (1940)|72")
     )
 
-    val responseFuture: Future[HttpResponse] = Http().singleRequest(request)
-
-    responseFuture
-      .onComplete {
-        case Success(res) => println(res)
-        case Failure(_)   => sys.error("something wrong")
-      }
+    Http().singleRequest(request)
 
   }
 }
