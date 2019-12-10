@@ -1,40 +1,37 @@
-import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
-import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
-import akka.util.Timeout
+/* CS441 Course Project: Chord Algorithm Akka/HTTP-based Simulator
+ * Team:   Carlos Antonio McNulty,  cmcnul3 (Leader)
+ *         Abram Gorgis,            agorgi2
+ *         Priyan Sureshkumar,      psures5
+ *         Shyam Patel,             spate54
+ * Date:   Dec 10, 2019
+ */
 
-import scala.util.{Failure, Success}
-import scala.concurrent.duration._
-import scala.collection.mutable
+import Server.Lookup
+import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
+import akka.actor.typed.scaladsl.adapter._
+import akka.actor.typed.{ActorRef, Behavior}
+import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
+import akka.http.scaladsl.Http
+import akka.http.scaladsl.model.{ContentTypes, HttpEntity}
+import akka.http.scaladsl.model.StatusCodes._
+import akka.http.scaladsl.server.Directives.{complete, concat, extractUnmatchedPath, get, pathPrefix, pathSingleSlash}
+import akka.http.scaladsl.server.directives.FutureDirectives.onComplete
+import akka.NotUsed
+import akka.pattern.ask
+import akka.stream.ActorMaterializer
+import akka.util.Timeout
+import com.typesafe.config.ConfigFactory.load
 import java.io.{File, PrintWriter}
 import java.security.MessageDigest
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
-
-import Server.{FindSuccessor, Lookup, TestTable, UpdateTable, UpdatedTable}
-import ServerManager.HTML_LOOKUP
-import akka.NotUsed
-import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
-import akka.http.scaladsl.Http
-import akka.http.scaladsl.model.{ContentTypes, HttpEntity, MessageEntity, StatusCodes}
-import akka.http.scaladsl.server.Directives.{complete, concat, extractUnmatchedPath, get, pathPrefix, pathSingleSlash}
-import akka.stream.ActorMaterializer
 import javax.xml.bind.annotation.adapters.HexBinaryAdapter
-import org.slf4j.LoggerFactory
-
-import akka.http.scaladsl.server.directives.FutureDirectives.onComplete
-
+import scala.collection.mutable
+import scala.concurrent.duration._
+import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.util.{Failure, Success}
 import scala.util.Random.shuffle
-import scala.compat.java8.FutureConverters.CompletionStageOps
-import scala.concurrent.{Await, Future}
-import akka.actor.typed.scaladsl.adapter._
-import akka.pattern.ask
-import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
-import spray.json.DefaultJsonProtocol._
-import akka.http.scaladsl.marshalling.Marshal
-
-import akka.http.scaladsl.model.StatusCodes._
-import scala.xml._
-import com.typesafe.config.ConfigFactory.load
+import scala.xml.{Elem, NodeBuffer, PrettyPrinter}
 
 
 object MD5{
@@ -61,10 +58,10 @@ class RouteMetadata{
 
 // Class to keep metadata for inserts and lookups
 class FileMetadata(filename: String, size: Int){
-  def getFilename(): String ={
+  def getFilename: String ={
     filename
   }
-  def getSize(): Int={
+  def getSize: Int ={
     size
   }
 }
@@ -106,32 +103,32 @@ object Server{
   case object TestTable extends Command
 
   // Largest value created by a 128 bit hash such as MD5
-  val md5Max = BigInt(1) << 128
+  val md5Max: BigInt = BigInt(1) << 128
 
   def apply(): Behavior[Command] =
     Behaviors.setup(context => new Server(context))
-}
+}//end object Server
 
 class Server(context: ActorContext[Server.Command])
-  extends AbstractBehavior[Server.Command](context) {
+  extends AbstractBehavior[Server.Command](context){
   import Server._
   // Actor reference to the next server in the chord ring
-  private var next: ActorRef[Server.Command] = null;
+  private var next: ActorRef[Server.Command] = _
   // Cache id of next server in the chord ring
   private var nextId: BigInt = -1
   // Set previous node in chord ring
-  private var prev: ActorRef[Server.Command] = null
+  private var prev: ActorRef[Server.Command] = _
   // Cache id of the previous server in the chord ring
   private var prevId: BigInt = -1
   // Finger table used for routing messages
-  private var table: List[(BigInt, ActorRef[Command])] = null
+  private var table: List[(BigInt, ActorRef[Command])] = _
   // Set id as hash of context username
   private var id: BigInt = -1
   // Store data keys in a set
   private val data = mutable.Map[String, FileMetadata]()
 
   // Ids for finger table entries, n+2^{k-1} for 1 <= k <= 128
-  var tableIds: List[BigInt] = null
+  var tableIds: List[BigInt] = _
 
   /* Find the node in the finger table closest to the ID.
    */
@@ -148,11 +145,10 @@ class Server(context: ActorContext[Server.Command])
         parent ! FindSuccessor(context.self, key, -1)
 
         Behaviors.receiveMessage{
-          case FoundSuccessor(successor, id, index) => {
+          case FoundSuccessor(successor, id, index) =>
             // Get file from selected node and forward reply
             successor ! GetFile(filename, replyTo)
             Behaviors.stopped
-          }
           case _ => Behaviors.unhandled
         }
       }.narrow[NotUsed]
@@ -166,16 +162,14 @@ class Server(context: ActorContext[Server.Command])
         parent ! FindSuccessor(context.self, key, -1)
 
         Behaviors.receiveMessage{
-          case FoundSuccessor(successor, id, index) => {
+          case FoundSuccessor(successor, id, index) =>
             // Insert file in located node
             successor ! Insert(filename, size, replyTo)
             Behaviors.stopped
-          }
           case _ => Behaviors.unhandled
         }
       }.narrow[NotUsed]
   }
-
 
   def updateTable(parent: ActorRef[Command], replyTo: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
@@ -184,13 +178,13 @@ class Server(context: ActorContext[Server.Command])
         var responses = 0
         // Request successor for each entry in finger table through immediate next
         var index = 0
-        tableIds.foreach( id => {
+        tableIds.foreach(id => {
           index += 1
           next ! FindSuccessor(context.self, id, index)
         })
         val replies = mutable.ListBuffer[(ActorRef[Command], BigInt, Int)]()
         Behaviors.receiveMessage{
-          case FoundSuccessor(successor, id, index) => {
+          case FoundSuccessor(successor, id, index) =>
             responses += 1
             replies += ((successor, id, index))
             // Check if all requests have been responded too
@@ -204,7 +198,6 @@ class Server(context: ActorContext[Server.Command])
             else{
               Behaviors.same
             }
-          }
           case _ => Behaviors.unhandled
         }
       }.narrow[NotUsed]
@@ -212,31 +205,31 @@ class Server(context: ActorContext[Server.Command])
 
   /* Behavior for child session to find successor.
    */
-  def findSuccessor(parent: ActorRef[Command], replyTo: ActorRef[Command], id: BigInt, index: Int): Behavior[NotUsed] = {
+  def findSuccessor(parent: ActorRef[Command], replyTo: ActorRef[Command], id: BigInt, index: Int): Behavior[NotUsed] ={
     Behaviors
-      .setup[AnyRef] { context =>
+      .setup[AnyRef]{ context =>
 
         if(prevId > this.id && id <= this.id){ // Case where we insert at first node
           replyTo ! FoundSuccessor(parent, id, index)
           Behaviors.stopped
         }
-        else if(prevId > this.id && id > prevId){// Case where insert at first node
+        else if(prevId > this.id && id > prevId){ // Case where insert at first node
           replyTo ! FoundSuccessor(parent, id, index)
           Behaviors.stopped
         }
-        else if(id > prevId && id <= this.id){// Case where we insert at this node
+        else if(id > prevId && id <= this.id){ // Case where we insert at this node
           replyTo ! FoundSuccessor(parent, id, index)
           Behaviors.stopped
         }
-        else if(id > this.id && id <= nextId){// Case where we insert at next node
+        else if(id > this.id && id <= nextId){ // Case where we insert at next node
           replyTo ! FoundSuccessor(next, id, index)
           Behaviors.stopped
         }
-        else if(this.id > nextId && id <= nextId){// Case where we insert at first node
+        else if(this.id > nextId && id <= nextId){ // Case where we insert at first node
           replyTo ! FoundSuccessor(next, id, index)
           Behaviors.stopped
         }
-        else if(this.id > nextId && id > this.id){// Case where we insert at first node
+        else if(this.id > nextId && id > this.id){ // Case where we insert at first node
           replyTo ! FoundSuccessor(next, id, index)
           Behaviors.stopped
         }
@@ -246,12 +239,11 @@ class Server(context: ActorContext[Server.Command])
           // Case where we route request
           node ! FindSuccessor(context.self, id, index)
           Behaviors.receiveMessage{
-            case FoundSuccessor(successor, id, index) => {
+            case FoundSuccessor(successor, id, index) =>
               // Forward successor to actor that requested successor
               replyTo ! FoundSuccessor(successor,id, index)
               // Stop child session
               Behaviors.stopped
-            }
             case _ => Behaviors.unhandled
           }
         }
@@ -268,7 +260,7 @@ class Server(context: ActorContext[Server.Command])
     }
   }
 
-  override def onMessage(msg: Command): Behavior[Command] = {
+  override def onMessage(msg: Command): Behavior[Command] ={
     msg match {
       case FindSuccessor(ref, id, index) =>
         // Create child session to handle successor request (concurrent)
@@ -278,7 +270,7 @@ class Server(context: ActorContext[Server.Command])
         this.id = id
         // Create table ids for server's finger table
         tableIds =
-          (0 to 127).map(i =>{
+          (0 to 127).map(i => {
             // Set n = id + 2^i
             var n = this.id + (BigInt(1) << i)
             // Values larger than 2^128 are reduced by 2^128 (quick mod)
@@ -312,7 +304,7 @@ class Server(context: ActorContext[Server.Command])
       case GetId(replyTo) =>
         replyTo ! RespondId(id)
         this
-      case FoundSuccessor(successor,id, index) =>
+      case FoundSuccessor(successor, id, index) =>
         context.log.info(s"FOUND SUCCESSOR: $successor")
         this
       case Lookup(filename, replyTo) =>
@@ -324,8 +316,7 @@ class Server(context: ActorContext[Server.Command])
         val metadata = data.getOrElse(filename, null)
         if(metadata != null){
           // Respond with the file metadata
-          //replyTo ! ServerManager.FoundFile(metadata)
-          replyTo ! ServerManager.FoundFile(metadata.getFilename(), metadata.getSize())
+          replyTo ! ServerManager.FoundFile(metadata.getFilename, metadata.getSize)
         }
         else{
           // Respond file not found
@@ -335,19 +326,9 @@ class Server(context: ActorContext[Server.Command])
       case Insert(filename, size, replyTo) =>
         val key = MD5.hash(filename)
         // Cases for inserting at this node
-        if(prevId > id && key <= id){
+        if((prevId > id && key <= id) || (prevId > id && key > prevId) || (key > prevId && key <= id)){
           data(filename) = new FileMetadata(filename, size)
           context.log.info(s"FILE INSERTED! NAME: $filename, SIZE: $size")
-          replyTo ! ServerManager.FileInserted(filename)
-        }
-        else if(prevId > id && key > prevId){
-          data(filename) = new FileMetadata(filename, size)
-          context.log.info(s"FILE INSERTED! NAME: $filename, SIZE: $size")
-          replyTo ! ServerManager.FileInserted(filename)
-        }
-        else if(key > prevId && key <= id){
-          data(filename) = new FileMetadata(filename, size)
-          context.log.info(s"FILE INSERTED! NAME: $filename, SIZE: $size")  
           replyTo ! ServerManager.FileInserted(filename)
         }
         else{
@@ -359,11 +340,9 @@ class Server(context: ActorContext[Server.Command])
         this
     }
   }
-
-}
+}//end class Server
 
 object ServerManager {
-
   sealed trait Command
 
   // Command to start the datacenter
@@ -394,19 +373,18 @@ object ServerManager {
   final case class SendData(id: BigInt, name: String, numFiles: Int) extends Command
   case object WriteSnapshot extends Command
   case object CancelAllTimers extends Command
-}
+}//end object ServerManager
 
 class ServerManager extends Actor with ActorLogging{
-
   import ServerManager._
 
-  private var ring: List[(BigInt, ActorRef[Server.Command])] = null
+  private var ring: List[(BigInt, ActorRef[Server.Command])] = _
 
   def testInserts(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
         val files = (0 to 300).map(x => s"FILE-$x").toList
-        val nodes = ring.map(x => x._2).toList
+        val nodes = ring.map(x => x._2)
         context.log.info(s"INSERTING ${files.size} FILE(S)...")
         // Send update table command to all servers 
         files.foreach(x =>{
@@ -421,14 +399,14 @@ class ServerManager extends Actor with ActorLogging{
         // Counter for responses received
         var responses = 0
         Behaviors.receiveMessage{
-          case FileInserted(filename) => {
+          case FileInserted(filename) =>
             inserted += filename
             // Update count for responses
             responses += 1
             // Check if all servers have inserted files
             if(responses == files.size){
               // Check that the correct files were reported as successfully inserted
-              val correct = files.map(x => if(inserted.contains(x)==true) 1 else 0).sum
+              val correct = files.map(x => if(inserted.contains(x)) 1 else 0).sum
               if(correct == files.size){
                 context.log.info(s"ALL ${files.size} FILES HAVE BEEN INSERTED!!")
                 Thread.sleep(2000)
@@ -449,15 +427,14 @@ class ServerManager extends Actor with ActorLogging{
             else{
               Behaviors.same
             }
-          }
-          case FoundFile(filename, size) =>{
-            //found += metadata.getFilename()
+          case FoundFile(filename, size) =>
+            //found += metadata.getFilename
             found += filename
             responses += 1
             // Check if all files have been found
             if(responses == files.size){
               // Check that the correct files were reported as found
-              val correct = files.map(x => if(found.contains(x)==true) 1 else 0).sum
+              val correct = files.map(x => if(found.contains(x)) 1 else 0).sum
               if(correct == files.size){
                 context.log.info(s"ALL ${files.size} FILES HAVE BEEN FOUND!!")
               }
@@ -466,19 +443,17 @@ class ServerManager extends Actor with ActorLogging{
             else{
               Behaviors.same
             }
-          }
-          case FileNotFound(filename) => {
+          case FileNotFound(filename) =>
             context.log.info(s"ERROR: FILE NOT FOUND [$filename]")
             Behaviors.stopped
-          }
           case _ => Behaviors.unhandled
         }
       }.narrow[NotUsed]
   }
 
-  def createChordRing(parent: ActorRef[ServerManager.Command], servers: List[ActorRef[Server.Command]]): Behavior[NotUsed] = {
+  def createChordRing(parent: ActorRef[ServerManager.Command], servers: List[ActorRef[Server.Command]]): Behavior[NotUsed] ={
     Behaviors
-      .setup[AnyRef] { context =>
+      .setup[AnyRef]{ context =>
         // Create chord ring, sorted by ids
         ring = servers.map(ref => (MD5.hash(ref.toString), ref)).sortBy(_._1)
         // Sends ids to all servers in the ring
@@ -487,7 +462,7 @@ class ServerManager extends Actor with ActorLogging{
         var prev = ring.last._2
         var prevId = ring.last._1
         // Inform servers about their previous and next nodes in the ring
-        ring.foreach{ case(id, ref) =>{
+        ring.foreach{ case(id, ref) =>
           // Set the servers's successor
           prev ! Server.SetSuccessor(ref, id, context.self)
           // Set the servers's predecessor
@@ -496,11 +471,11 @@ class ServerManager extends Actor with ActorLogging{
           // Update previous node in the ring
           prev = ref
           prevId = id
-        }}
+        }
         // Counter for the number of servers that are ready
         var responses = 0
         Behaviors.receiveMessage{
-          case ServerWarmedUp =>{
+          case ServerWarmedUp =>
             responses += 1
             // Check if all servers have been warmed up
             if(responses == servers.size){
@@ -511,7 +486,6 @@ class ServerManager extends Actor with ActorLogging{
             else{
               Behaviors.same
             }
-          }
           case _ => Behaviors.unhandled
         }
       }.narrow[NotUsed]
@@ -524,7 +498,7 @@ class ServerManager extends Actor with ActorLogging{
         ring.foreach{ case(_, ref) =>ref ! Server.UpdateTable(context.self)}
         var responses = 0
         Behaviors.receiveMessage{
-          case TableUpdated(server) => {
+          case TableUpdated(server) =>
             // Update count for responses
             responses += 1
             // Check if all servers have responded
@@ -536,13 +510,12 @@ class ServerManager extends Actor with ActorLogging{
             else{
               Behaviors.same
             }
-          }
           case _ => Behaviors.unhandled
         }
       }.narrow[NotUsed]
   }
 
-  def writeSnapshot(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] = {
+  def writeSnapshot(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
     val serverData = mutable.Map[BigInt, Elem]()
     Behaviors
       .setup[AnyRef] { context =>
@@ -555,11 +528,10 @@ class ServerManager extends Actor with ActorLogging{
             serverData.put(id, <server><id>{id}</id><name>{name}</name><numFiles>{numFiles}</numFiles></server>)
 
             // Update count for responses
-            //context.log.info("GETTING SNAPSHOT RESPONSES")
             responses += 1
             // Check if all servers have responded
             if (responses == ring.size) {
-              val servers = new xml.NodeBuffer
+              val servers = new NodeBuffer
               serverData.toSeq.sortBy(_._1).foreach(x => servers += x._2)
               context.log.info("GOT ALL SNAPSHOT RESPONSES. WRITING TO FILE")
               val pw = new PrintWriter(new File("snapshot_" +
@@ -567,8 +539,6 @@ class ServerManager extends Actor with ActorLogging{
               pw.write(new PrettyPrinter(80, 4).format(<servers>{servers}</servers>))
               pw.close()
               context.log.info("All servers have sent data!")
-              // Inform parent that all responses have been received
-              //parent ! ServerManager.CancelAllTimers
               Behaviors.stopped
             }
             else {
@@ -585,37 +555,32 @@ class ServerManager extends Actor with ActorLogging{
       val servers = (1 to total).map(i => context.spawn(Server(), s"server:$i")).toList
       // Create the chord ring
       context.spawnAnonymous(createChordRing(context.self, servers))
-    //Behaviors.same
     case ServersWarmedUp =>
       log.info("SERVERS WARMED UP")
       // Update Tables
       context.spawnAnonymous(updateTables(context.self))
-    //Behaviors.same
     case ServersReady =>
       log.info("SERVERS READY")
       Thread.sleep(2000)
       log.info("TESTING")
       context.spawnAnonymous(testInserts(context.self))
-    //Behaviors.same
     case HTML_LOOKUP(movieName) =>
       ring.last._2 ! Lookup(movieName, sender())
     case WriteSnapshot =>
       context.spawnAnonymous(writeSnapshot(context.self))
     case Shutdown =>
-      //Behaviors.stopped
       context.stop(self)
   }
-}
+}//end class ServerManager
 
 object WebServer {
 
-
   def main(args: Array[String]): Unit = {
     // Create root system for actors
-    implicit val system = akka.actor.ActorSystem("testing")
-    implicit val materializer = ActorMaterializer()
+    implicit val system: ActorSystem = akka.actor.ActorSystem("testing")
+    implicit val materializer: ActorMaterializer = ActorMaterializer()
     // needed for the future flatMap/onComplete in the end
-    implicit val executionContext = system.dispatcher
+    implicit val executionContext: ExecutionContextExecutor = system.dispatcher
     // Load the config file
     val config = load
     // Create server manager
@@ -655,6 +620,5 @@ object WebServer {
     }
     val bindingFuture: Future[Http.ServerBinding] = Http().bindAndHandle(route, "localhost", 8080)
     println(s"Server online at http://localhost:8080/\nPress RETURN to stop...")
-
   }
-}
+}//end object WebServer
