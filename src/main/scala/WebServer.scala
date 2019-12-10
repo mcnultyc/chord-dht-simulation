@@ -6,6 +6,8 @@
  * Date:   Dec 10, 2019
  */
 
+import java.io.File
+
 import akka.actor.{ActorSystem, Props}
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
@@ -15,6 +17,7 @@ import akka.http.scaladsl.server.directives.FutureDirectives.onComplete
 import akka.pattern.ask
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory.load
+
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContextExecutor, Future}
 import scala.util.{Failure, Success}
@@ -91,6 +94,26 @@ object WebServer{
 
     val route =
       concat(
+        path("snapshot"){
+          get{
+            // Get filenames from the snapshots directory
+            val dir = new File("snapshots")
+            dir.listFiles.filter(_.isFile).toList.toString()
+            // Get most recent snapshot from the snapshots directory
+            val file = (dir.listFiles.filter(_.isFile).toList.last).toString
+            getFromDirectory(file)
+          }
+        },
+        path("log"){
+          get{
+            // Get filenames from the logs directory
+            val dir = new File("logs")
+            dir.listFiles.filter(_.isFile).toList.toString()
+            // Get the most log file from the logs directory
+            val file = (dir.listFiles.filter(_.isFile).toList.last).toString
+            getFromDirectory(file)
+          }
+        },
         get {
           entity(as[String]){ movie =>{
             // Set timeout for lookup request
