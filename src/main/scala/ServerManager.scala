@@ -6,15 +6,15 @@
  * Date:   Dec 10, 2019
  */
 
-import java.io.{File, PrintWriter}
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import Server.Lookup
 import akka.NotUsed
 import akka.actor.{Actor, ActorLogging}
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.scaladsl.adapter._
+import java.io.{File, PrintWriter}
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import scala.collection.mutable
 import scala.util.Random.shuffle
 import scala.xml.{Elem, NodeBuffer, PrettyPrinter}
