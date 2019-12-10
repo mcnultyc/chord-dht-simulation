@@ -355,7 +355,7 @@ class Server(context: ActorContext[Server.Command])
         }
         this
       case GetData(replyTo) =>
-        replyTo ! ServerManager.SendData(id, context.self.toString)
+        replyTo ! ServerManager.SendData(id, context.self.toString, data.size)
         this
     }
   }
@@ -391,7 +391,7 @@ object ServerManager {
   final case class HTML_LOOKUP(movieName: String) extends Command
 
   // Commands for snapshot
-  final case class SendData(id: BigInt, name: String) extends Command
+  final case class SendData(id: BigInt, name: String, numFiles: Int) extends Command
   case object WriteSnapshot extends Command
   case object CancelAllTimers extends Command
 }
@@ -550,9 +550,9 @@ class ServerManager extends Actor with ActorLogging{
         ring.foreach { case (_, ref) => ref ! Server.GetData(context.self) }
         var responses = 0
         Behaviors.receiveMessage {
-          case SendData(id, name) =>
+          case SendData(id, name, numFiles) =>
             // Add server data to collection
-            serverData.put(id, <server><id>{id}</id><name>{name}</name></server>)
+            serverData.put(id, <server><id>{id}</id><name>{name}</name><numFiles>{numFiles}</numFiles></server>)
 
             // Update count for responses
             //context.log.info("GETTING SNAPSHOT RESPONSES")
