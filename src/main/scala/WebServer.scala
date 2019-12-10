@@ -513,9 +513,7 @@ class ServerManager extends Actor with ActorLogging{
           case SendData(id, name, numFiles) =>
             // Add server data to collection
             serverData.put(id, <server><id>{id}</id><name>{name}</name><numFiles>{numFiles}</numFiles></server>)
-
             // Update count for responses
-            context.log.info("GETTING SNAPSHOT RESPONSES")
             responses += 1
             // Check if all servers have responded
             if (responses == ring.size) {
