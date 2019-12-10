@@ -1,6 +1,5 @@
 import akka.actor.typed.{ActorRef, ActorSystem, Behavior}
 import akka.actor.typed.scaladsl.{AbstractBehavior, ActorContext, Behaviors}
-
 import akka.util.Timeout
 
 import scala.util.{Failure, Success}
@@ -19,6 +18,8 @@ import akka.stream.ActorMaterializer
 import javax.xml.bind.annotation.adapters.HexBinaryAdapter
 import org.slf4j.LoggerFactory
 
+import akka.http.scaladsl.server.directives.FutureDirectives.onComplete
+
 import scala.util.Random.shuffle
 import scala.compat.java8.FutureConverters.CompletionStageOps
 import scala.concurrent.{Await, Future}
@@ -27,6 +28,9 @@ import akka.pattern.ask
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport._
 import spray.json.DefaultJsonProtocol._
 import akka.http.scaladsl.marshalling.Marshal
+import akka.http.scaladsl.server.StandardRoute
+
+import akka.http.scaladsl.model.StatusCodes._
 
 object MD5{
   private val hashAlgorithm = MessageDigest.getInstance("MD5")
@@ -526,37 +530,25 @@ class ServerManager extends Actor with ActorLogging{
 
   override def receive = {
     case Start(total) =>
-      //context.log.info(s"STARTING $total SERVERS")
+      log.info(s"STARTING $total SERVERS")
       // Create servers for datacenter
       val servers = (1 to total).map(i => context.spawn(Server(), s"server:$i")).toList
       // Create the chord ring
       context.spawnAnonymous(createChordRing(context.self, servers))
     //Behaviors.same
     case ServersWarmedUp =>
-      //context.log.info("SERVERS WARMED UP")
+      log.info("SERVERS WARMED UP")
       // Update Tables
       context.spawnAnonymous(updateTables(context.self))
     //Behaviors.same
     case ServersReady =>
-      //context.log.info("SERVERS READY")
+      log.info("SERVERS READY")
       Thread.sleep(2000)
-      //context.log.debug("TESTING")
+      log.info("TESTING")
       context.spawnAnonymous(testInserts(context.self))
     //Behaviors.same
     case HTML_LOOKUP(movieName) =>
       ring.last._2 ! Lookup(movieName, sender())
-    case Test =>
-      //val t: Nothing = sender()
-      //sender() ! s"filename: testing.txt, year: 1902"
-      //val test: ActorRef[Any] = context.self
-      //val c: ActorRef[String] = sender()
-      //c ! s"filename: testing.txt, year: 1902"
-      ring.last._2 ! Lookup("FILE#2", sender())
-      //val metadata = new FileMetadata("testing", 0)
-      //sender() ! TestReply(s"filename: testing.txt, year: 1902")
-      //sender() ! FoundFile(metadata.getFilename(), metadata.getSize())
-    //context.log.info(s"LOOKING UP MOVIE FILE $movieName")
-    //Behaviors.same
     case Shutdown =>
       //Behaviors.stopped
       context.stop(self)
@@ -566,22 +558,19 @@ class ServerManager extends Actor with ActorLogging{
 
 object WebServer {
 
-  //final case class TestReply(response: String)
 
   def main(args: Array[String]): Unit = {
+    // Create root system for actors
     implicit val system = akka.actor.ActorSystem("testing")
     implicit val materializer = ActorMaterializer()
     // needed for the future flatMap/onComplete in the end
     implicit val executionContext = system.dispatcher
-
-    //val manager = system.spawn(ServerManager.behavior, "servermanager")
+    // Create server manager
     val manager = system.actorOf(Props[ServerManager], "servermanager")
+    // Start the datacenter
     manager ! ServerManager.Start(20)
 
     val xmlstyle = "<?xml-stylesheet href=\"#style\"\n   type=\"text/css\"?>"
-
-    //implicit val bidFormat = jsonFormat1(ServerManager.TestReply.apply)
-    implicit val format = jsonFormat2(ServerManager.FoundFile.apply)
 
     val route = get {
       concat(
@@ -591,16 +580,17 @@ object WebServer {
         pathPrefix("movies") {
           extractUnmatchedPath { movieName =>
             val movie = movieName.dropChars(1).toString()
-            //manager ! ServerManager.HTML_LOOKUP(movie)
-            println(s"movie name: $movieName")
-            //val result: Future[CookieFabric.Reply] = cookieFabric.ask(ref => CookieFabric.GiveMeCookies(3, ref))
-            implicit val timeout: Timeout = 3.seconds
-            //val result: Future[ServerManager.TestReply] = (manager ? ServerManager.Test)
-            //val future = (manager ? ServerManager.Test).mapTo[ServerManager.TestReply]
-            val future = (manager  ? ServerManager.HTML_LOOKUP(movie)).mapTo[ServerManager.FoundFile]
-            val result = Await.result(future, timeout.duration)
-            //val result = Marshal(future).to[MessageEntity]
-            complete(result)
+            // Set timeout for lookup request
+            implicit val timeout: Timeout = 5.seconds
+            // Create future for lookup request
+            val future = manager.ask(ServerManager.HTML_LOOKUP(movie))
+            // Create http route after lookup is ready
+            onComplete(future){
+              // Match responses from the server manager
+              case Success(ServerManager.FoundFile(filename, size)) => complete(s"found! filename: $filename, size: $size")
+              case Success(ServerManager.FileNotFound(filename)) => complete(s"not found! filename: $filename")
+              case Failure(ex) => complete((InternalServerError, s"An error occurred: ${ex.getMessage}"))
+            }
           }
         }
 
