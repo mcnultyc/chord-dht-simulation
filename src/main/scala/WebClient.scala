@@ -6,15 +6,14 @@
  * Date:   Dec 10, 2019
  */
 
-import akka.http.scaladsl.unmarshalling.Unmarshal
-
-import scala.concurrent.{ExecutionContextExecutor, Future}
-import scala.util.Random.shuffle
-import scala.io.Source
-import scala.util.{Failure, Success}
 import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.model._
+import akka.http.scaladsl.unmarshalling.Unmarshal
+import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.io.Source
+import scala.util.Random.shuffle
+import scala.util.{Failure, Success}
 
 
 object WebClient {
