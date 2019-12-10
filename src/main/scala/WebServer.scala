@@ -629,7 +629,6 @@ object WebServer{
       concat(
         get {
           entity(as[String]){ movie =>{
-            println(movie+"**********************")
             // Set timeout for lookup request
             implicit val timeout: Timeout = 10.seconds
             // Create future for lookup request
