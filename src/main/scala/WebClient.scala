@@ -62,14 +62,13 @@ object WebClient {
         )
        val future: Future[HttpResponse] = Http().singleRequest(request)
        future.onComplete{
-         case Success(response) => {
+         case Success(response) =>
            // Unmarshal response entity from http response
-            Unmarshal(response.entity).to[String].onComplete{
-              // Log response from web servers
-              case Success(data) => system.log.info(s"HTTP PUT [$line]: $data")
-              case Failure(exception) => sys.error(exception.getMessage)
-            }
-         }
+           Unmarshal(response.entity).to[String].onComplete{
+             // Log response from web servers
+             case Success(data) => system.log.info(s"HTTP PUT [$line]: $data")
+             case Failure(exception) => sys.error(exception.getMessage)
+           }
          case Failure(exception) => sys.error(exception.getMessage)
        }
     })
