@@ -49,11 +49,7 @@ object MD5{
 
 // Class to keep metadata for routing requests
 class RouteMetadata{
-  private var hops: Int = 0
-  private var time: Int = 0
-  def updateHops(hops: Int): Unit ={
-    this.hops= hops
-  }
+  var hops: Int = 0
 }
 
 // Class to keep metadata for inserts and lookups
@@ -154,13 +150,13 @@ class Server(context: ActorContext[Server.Command])
       }.narrow[NotUsed]
   }
 
+
   def insertFile(parent: ActorRef[Command], replyTo: ActorRef[ServerManager.Command], filename: String, size: Int): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
         val key = MD5.hash(filename)
         // Find node to insert file in
         parent ! FindSuccessor(context.self, key, -1)
-
         Behaviors.receiveMessage{
           case FoundSuccessor(successor, id, index) =>
             // Insert file in located node
