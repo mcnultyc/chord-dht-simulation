@@ -6,6 +6,8 @@
  * Date:   Dec 10, 2019
  */
 
+import akka.actor
+import akka.actor.{ActorSystem, Props}
 import com.typesafe.config.ConfigFactory.load
 import org.scalatest.{FlatSpec, Matchers}
 
@@ -39,5 +41,18 @@ class WebServerTests extends FlatSpec with Matchers {
   }
   it should "specify snapshot interval in simulation 2" in {
     load.getInt("sim2.snapshot-interval") should be (15)
+  }
+
+  // TEST 11: actor system
+  "ActorSystem" should "be created" in {
+    akka.actor.ActorSystem("testing").isInstanceOf[ActorSystem] should be (true)
+  }
+  // TEST 12-13: server manager
+  "ServerManager" should "be created" in {
+    akka.actor.ActorSystem("testing").actorOf(Props[ServerManager], "ServerManager").isInstanceOf[actor.ActorRef] should be (true)
+  }
+  it should "start" in {
+    val manager = akka.actor.ActorSystem("testing").actorOf(Props[ServerManager], "ServerManager")
+    manager ! ServerManager.Start(20)
   }
 }//end class WebServerTests
