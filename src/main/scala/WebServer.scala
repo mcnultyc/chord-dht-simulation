@@ -49,11 +49,7 @@ object MD5{
 
 // Class to keep metadata for routing requests
 class RouteMetadata{
-  private var hops: Int = 0
-  private var time: Int = 0
-  def updateHops(hops: Int): Unit ={
-    this.hops= hops
-  }
+  var hops: Int = 0
 }
 
 // Class to keep metadata for inserts and lookups
@@ -67,15 +63,23 @@ class FileMetadata(filename: String, size: Int){
 }
 
 object Server{
+
+  // Helper class to store length of routing paths
+  final case class RouteMetadata(hops: Int)
+
   sealed trait Command
   // Commands to start and pause the system
   case object Start extends Command
   case object Pause extends Command
+
+  // Command to update the stats for the server
+  final case class UpdateStats(hops: Int) extends Command
+
   // Commands to update successors and handle routing requests
   final case class SetSuccessor(next: ActorRef[Server.Command], nextId: BigInt,
                                 replyTo: ActorRef[ServerManager.Command]) extends Command
-  final case class FindSuccessor(replyTo: ActorRef[Server.Command], id: BigInt, index: Int) extends Command
-  final case class FoundSuccessor(successor: ActorRef[Command], id: BigInt, index: Int) extends Command
+  final case class FindSuccessor(replyTo: ActorRef[Server.Command], id: BigInt, index: Int, hops: Int) extends Command
+  final case class FoundSuccessor(successor: ActorRef[Command], id: BigInt, index: Int, hops: Int) extends Command
 
   final case class SetPrev(prev: ActorRef[Server.Command], prevId: BigInt,
                            replyTo: ActorRef[ServerManager.Command]) extends Command
@@ -99,8 +103,6 @@ object Server{
 
   // Command for snapshot
   final case class GetData(replyTo: ActorRef[ServerManager.Command]) extends Command
-
-  case object TestTable extends Command
 
   // Largest value created by a 128 bit hash such as MD5
   val md5Max: BigInt = BigInt(1) << 128
@@ -126,6 +128,10 @@ class Server(context: ActorContext[Server.Command])
   private var id: BigInt = -1
   // Store data keys in a set
   private val data = mutable.Map[String, FileMetadata]()
+  // Store the number of total hops
+  private var hops: BigInt = 0
+  // Total number insert/lookup requests started at this node
+  private var totalRequests: BigInt = 0
 
   // Ids for finger table entries, n+2^{k-1} for 1 <= k <= 128
   var tableIds: List[BigInt] = _
@@ -142,10 +148,13 @@ class Server(context: ActorContext[Server.Command])
       .setup[AnyRef]{ context =>
         val key = MD5.hash(filename)
         // Find node that should have file
-        parent ! FindSuccessor(context.self, key, -1)
+        parent ! FindSuccessor(context.self, key, -1, -1)
 
         Behaviors.receiveMessage{
-          case FoundSuccessor(successor, id, index) =>
+          case FoundSuccessor(successor, id, index, hops) =>
+            context.log.info(s"FILE FOUND! NAME: $filename, SIZE: $size, HOPS: $hops")
+            // Update stats for node
+            parent ! UpdateStats(hops)
             // Get file from selected node and forward reply
             successor ! GetFile(filename, replyTo)
             Behaviors.stopped
@@ -154,15 +163,18 @@ class Server(context: ActorContext[Server.Command])
       }.narrow[NotUsed]
   }
 
+
   def insertFile(parent: ActorRef[Command], replyTo: ActorRef[ServerManager.Command], filename: String, size: Int): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
         val key = MD5.hash(filename)
         // Find node to insert file in
-        parent ! FindSuccessor(context.self, key, -1)
-
+        parent ! FindSuccessor(context.self, key, -1, -1)
         Behaviors.receiveMessage{
-          case FoundSuccessor(successor, id, index) =>
+          case FoundSuccessor(successor, id, index, hops) =>
+            context.log.info(s"FILE INSERTED! NAME: $filename, SIZE: $size, HOPS: $hops")
+            // Update stats for node
+            parent ! UpdateStats(hops)
             // Insert file in located node
             successor ! Insert(filename, size, replyTo)
             Behaviors.stopped
@@ -180,11 +192,11 @@ class Server(context: ActorContext[Server.Command])
         var index = 0
         tableIds.foreach(id => {
           index += 1
-          next ! FindSuccessor(context.self, id, index)
+          next ! FindSuccessor(context.self, id, index, -1)
         })
         val replies = mutable.ListBuffer[(ActorRef[Command], BigInt, Int)]()
         Behaviors.receiveMessage{
-          case FoundSuccessor(successor, id, index) =>
+          case FoundSuccessor(successor, id, index, hops) =>
             responses += 1
             replies += ((successor, id, index))
             // Check if all requests have been responded too
@@ -205,31 +217,31 @@ class Server(context: ActorContext[Server.Command])
 
   /* Behavior for child session to find successor.
    */
-  def findSuccessor(parent: ActorRef[Command], replyTo: ActorRef[Command], id: BigInt, index: Int): Behavior[NotUsed] ={
+  def findSuccessor(parent: ActorRef[Command], replyTo: ActorRef[Command], id: BigInt, index: Int, hops: Int): Behavior[NotUsed] ={
     Behaviors
       .setup[AnyRef]{ context =>
         // Case where we insert at first node
         if((prevId > this.id && id <= this.id) ||
            (prevId > this.id && id > prevId) ||
            (id > prevId && id <= this.id)){
-          replyTo ! FoundSuccessor(parent, id, index)
+          replyTo ! FoundSuccessor(parent, id, index, hops)
           Behaviors.stopped
         }
         // Case where we insert at next node
         else if((id > this.id && id <= nextId) ||
                 (this.id > nextId && id <= nextId) ||
                 (this.id > nextId && id > this.id)){
-          replyTo ! FoundSuccessor(next, id, index)
+          replyTo ! FoundSuccessor(next, id, index, hops)
           Behaviors.stopped
         }
         else{
           val node = closestPrecedingNode(id)
           // Case where we route request
-          node ! FindSuccessor(context.self, id, index)
+          node ! FindSuccessor(context.self, id, index, hops)
           Behaviors.receiveMessage{
-            case FoundSuccessor(successor, id, index) =>
+            case FoundSuccessor(successor, id, index, hops) =>
               // Forward successor to actor that requested successor
-              replyTo ! FoundSuccessor(successor,id, index)
+              replyTo ! FoundSuccessor(successor,id, index, hops)
               // Stop child session
               Behaviors.stopped
             case _ => Behaviors.unhandled
@@ -250,9 +262,9 @@ class Server(context: ActorContext[Server.Command])
 
   override def onMessage(msg: Command): Behavior[Command] ={
     msg match {
-      case FindSuccessor(ref, id, index) =>
+      case FindSuccessor(ref, id, index, hops) =>
         // Create child session to handle successor request (concurrent)
-        context.spawnAnonymous(findSuccessor(context.self, ref, id, index))
+        context.spawnAnonymous(findSuccessor(context.self, ref, id, index, hops+1))
         this
       case SetId(id, replyTo) =>
         this.id = id
@@ -280,6 +292,10 @@ class Server(context: ActorContext[Server.Command])
         this.prevId = prevId
         report(replyTo)
         this
+      case UpdateStats(hops) =>
+        this.hops += hops
+        this.totalRequests += 1
+        this
       case UpdateTable(replyTo) =>
         context.spawnAnonymous(updateTable(context.self, replyTo))
         this
@@ -292,7 +308,7 @@ class Server(context: ActorContext[Server.Command])
       case GetId(replyTo) =>
         replyTo ! RespondId(id)
         this
-      case FoundSuccessor(successor, id, index) =>
+      case FoundSuccessor(successor, id, index, hops) =>
         context.log.info(s"FOUND SUCCESSOR: $successor")
         this
       case Lookup(filename, replyTo) =>
@@ -316,7 +332,6 @@ class Server(context: ActorContext[Server.Command])
         // Cases for inserting at this node
         if((prevId > id && key <= id) || (prevId > id && key > prevId) || (key > prevId && key <= id)){
           data(filename) = new FileMetadata(filename, size)
-          context.log.info(s"FILE INSERTED! NAME: $filename, SIZE: $size")
           replyTo ! ServerManager.FileInserted(filename)
         }
         else{
