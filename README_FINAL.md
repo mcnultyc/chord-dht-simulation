@@ -4,7 +4,7 @@
 #### Team: Carlos Antonio McNulty (cmcnul3), Abram Gorgis (agorgi2), Priyan Sureshkumar (psures5), Shyam Patel (spate54)
 
 #
-##### Driver Langauge:          Scala 2.13.1
+##### Driver Language:          Scala 2.13.1
 ##### Testing Framework:        ScalaTest
 ##### Building Framework:       SBT
 ##### Configuration Library:    Typesafe
