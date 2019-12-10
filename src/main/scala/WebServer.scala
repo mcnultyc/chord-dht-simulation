@@ -72,6 +72,9 @@ object Server{
   case object Start extends Command
   case object Pause extends Command
 
+  // Command to update the stats for the server
+  final case class UpdateStats(hops: Int) extends Command
+
   // Commands to update successors and handle routing requests
   final case class SetSuccessor(next: ActorRef[Server.Command], nextId: BigInt,
                                 replyTo: ActorRef[ServerManager.Command]) extends Command
@@ -125,6 +128,10 @@ class Server(context: ActorContext[Server.Command])
   private var id: BigInt = -1
   // Store data keys in a set
   private val data = mutable.Map[String, FileMetadata]()
+  // Store the number of total hops
+  private var hops: BigInt = 0
+  // Total number insert/lookup requests started at this node
+  private var totalRequests: BigInt = 0
 
   // Ids for finger table entries, n+2^{k-1} for 1 <= k <= 128
   var tableIds: List[BigInt] = _
@@ -146,6 +153,8 @@ class Server(context: ActorContext[Server.Command])
         Behaviors.receiveMessage{
           case FoundSuccessor(successor, id, index, hops) =>
             context.log.info(s"FILE FOUND! NAME: $filename, SIZE: $size, HOPS: $hops")
+            // Update stats for node
+            parent ! UpdateStats(hops)
             // Get file from selected node and forward reply
             successor ! GetFile(filename, replyTo)
             Behaviors.stopped
@@ -164,6 +173,8 @@ class Server(context: ActorContext[Server.Command])
         Behaviors.receiveMessage{
           case FoundSuccessor(successor, id, index, hops) =>
             context.log.info(s"FILE INSERTED! NAME: $filename, SIZE: $size, HOPS: $hops")
+            // Update stats for node
+            parent ! UpdateStats(hops)
             // Insert file in located node
             successor ! Insert(filename, size, replyTo)
             Behaviors.stopped
@@ -280,6 +291,10 @@ class Server(context: ActorContext[Server.Command])
         this.prev = prev
         this.prevId = prevId
         report(replyTo)
+        this
+      case UpdateStats(hops) =>
+        this.hops += hops
+        this.totalRequests += 1
         this
       case UpdateTable(replyTo) =>
         context.spawnAnonymous(updateTable(context.self, replyTo))
