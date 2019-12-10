@@ -44,7 +44,7 @@ object ServerManager{
 
   // Commands for snapshot
   final case class SendData(id: BigInt, name: String, numFiles: Int,
-                            totalRequests: BigInt, avgHops: BigInt) extends Command
+                            totalRequests: BigInt, avgHops: Float) extends Command
   case object WriteSnapshot extends Command
   case object CancelAllTimers extends Command
 }//end object ServerManager
@@ -191,7 +191,7 @@ class ServerManager extends Actor with ActorLogging{
   }
 
   def writeSnapshot(parent: ActorRef[ServerManager.Command]): Behavior[NotUsed] ={
-    val serverData = mutable.Map[BigInt, Elem]()
+    val serverData = mutable.Map[BigInt, (Elem, Int, Float)]()
     Behaviors
       .setup[AnyRef]{ context =>
         // Send get data command to all servers
@@ -200,13 +200,15 @@ class ServerManager extends Actor with ActorLogging{
         Behaviors.receiveMessage{
           case SendData(id, name, numFiles, totalRequests, avgHops) =>
             // Add server data to collection
-            serverData.put(id, <server><id>{id}</id><name>{name}</name><numFiles>{numFiles}</numFiles><totalRequests>{totalRequests}</totalRequests><avgHops>{avgHops}</avgHops></server>)
+            serverData.put(id, (<server><id>{id}</id><name>{name}</name><numFiles>{numFiles}</numFiles><totalRequests>{totalRequests}</totalRequests><avgHops>{avgHops}</avgHops></server>, numFiles, avgHops))
             // Update count for responses
             responses += 1
             // Check if all servers have responded
             if (responses == ring.size){
               val servers = new NodeBuffer
-              serverData.toSeq.sortBy(_._1).foreach(x => servers += x._2)
+              servers += <numFiles>{serverData.map(_._2._2).sum}</numFiles>
+              servers += <avgHops>{serverData.map(_._2._3).sum / serverData.size}</avgHops>
+              serverData.toSeq.sortBy(_._1).foreach(x => servers += x._2._1)
               context.log.info("GOT ALL SNAPSHOT RESPONSES. WRITING TO FILE")
               val directory = new File("snapshots")
               if (!directory.exists)

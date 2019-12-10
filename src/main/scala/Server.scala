@@ -303,7 +303,7 @@ class Server(context: ActorContext[Server.Command])
         }
         this
       case GetData(replyTo) =>
-        val avgHops = if (totalRequests == 0) BigInt(0) else hops / totalRequests
+        val avgHops = if (totalRequests == 0) 0f else hops.toFloat / totalRequests.toFloat
         replyTo ! ServerManager.SendData(id, context.self.toString, data.size, totalRequests, avgHops)
         this
     }
