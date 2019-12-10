@@ -589,6 +589,8 @@ object WebServer{
     system.scheduler.scheduleWithFixedDelay(delay.seconds, delay.seconds, manager, ServerManager.WriteSnapshot)
 
     val xmlstyle = "<?xml-stylesheet href=\"#style\"\n   type=\"text/css\"?>"
+    // Start running the web client
+    WebClient.run()
 
     val route =
       concat(
@@ -613,15 +615,17 @@ object WebServer{
         },
         put {
           entity(as[String]) { movie => {
+            // TODO insert movie here through server manager
             complete("Put "+movie+" onto server")
           }
-
           }
         },
-        get{
-          complete("Send put requests to localhost:8080")
+        extractUnmatchedPath { anything => {
+          get {
+            complete("Send put requests to localhost:8080")
+          }
         }
-
+        }
       )
 
     val bindingFuture: Future[Http.ServerBinding] = Http().bindAndHandle(route, "localhost", 8080)

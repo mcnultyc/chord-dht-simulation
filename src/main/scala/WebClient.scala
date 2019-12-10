@@ -14,8 +14,13 @@ object WebClient {
     // needed for the future flatMap/onComplete in the end
     implicit val executionContext = system.dispatcher
 
+    val responseFuture: Future[HttpResponse] = Http().singleRequest(HttpRequest(uri = "http://localhost:8080/"))
 
-
+    responseFuture
+      .onComplete {
+        case Success(res) => println(res)
+        case Failure(_)   => sys.error("something wrong")
+      }
 
   }
 }
