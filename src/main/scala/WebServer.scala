@@ -555,7 +555,7 @@ class ServerManager extends Actor with ActorLogging{
             serverData.put(id, <server><id>{id}</id><name>{name}</name></server>)
 
             // Update count for responses
-            //context.log.info("GETTING SNAPSHOT RESPONSES")
+            context.log.info("GETTING SNAPSHOT RESPONSES")
             responses += 1
             // Check if all servers have responded
             if (responses == ring.size) {
@@ -566,9 +566,7 @@ class ServerManager extends Actor with ActorLogging{
                 LocalDateTime.now.format(DateTimeFormatter.ofPattern("YYYYMMdd_HHmmss")) + ".xml"))
               pw.write(new PrettyPrinter(80, 4).format(<servers>{servers}</servers>))
               pw.close()
-              context.log.info("All servers have sent data!")
               // Inform parent that all responses have been received
-              //parent ! ServerManager.CancelAllTimers
               Behaviors.stopped
             }
             else {
@@ -644,9 +642,9 @@ object WebServer {
             // Create http route after lookup is ready
             onComplete(future){
               // Match responses from the server manager
-              case Success(ServerManager.FoundFile(filename, size)) => complete(s"found! filename: $filename, size: $size")
-              case Success(ServerManager.FileNotFound(filename)) => complete(s"not found! filename: $filename")
-              case Failure(ex) => complete((InternalServerError, s"An error occurred: ${ex.getMessage}"))
+              case Success(ServerManager.FoundFile(filename, size)) => complete(s"FOUND! filename: $filename, size: $size")
+              case Success(ServerManager.FileNotFound(filename)) => complete(s"NOT FOUND! filename: $filename")
+              case Failure(ex) => complete((InternalServerError, s"ERROR: ${ex.getMessage}"))
             }
           }
         }
