@@ -1,8 +1,7 @@
-# CS 441 Course Project - Chord/Akka Model
+# CS441 Course Project - Chord Algorithm Akka/HTTP-based Simulator
 #### Description: Create a Chord cloud overlay network algorithm with convergent hashing using Akka/HTTP-based simulator.
 
-#### Name: Carlos McNulty, Shyam Patel, Abram Gorgis, Priyan Sureshkumar
-#### Net-ID: CARLOS@uic.edu SHYAM@uic.edu ABRAM@uic.edu psures5@uic.edu
+#### Team: Carlos Antonio McNulty (cmcnul3), Abram Gorgis (agorgi2), Priyan Sureshkumar (psures5), Shyam Patel (spate54)
 
 #
 ##### Driver Langauge:          Scala 2.13.1
@@ -15,11 +14,17 @@
                             
 ##### Main Driver Class:        Driver in Driver.scala
 
-##### Required Libraries: 
-                            "com.typesafe.akka" %% "akka-actor-typed" % akkaVersion,
-                            "ch.qos.logback" % "logback-classic" % "1.2.3",
-                            "com.typesafe.akka" %% "akka-actor-testkit-typed" % akkaVersion % Test,
-                            "org.scalatest" %% "scalatest" % "3.0.8" % Test
+##### Required Libraries:
+```
+  "ch.qos.logback" % "logback-classic" % "1.2.3",
+  "com.typesafe.akka" %% "akka-actor-testkit-typed" % akkaVersion % Test,
+  "com.typesafe.akka" %% "akka-actor-typed" % akkaVersion,
+  "com.typesafe.akka" %% "akka-http" % "10.1.11",
+  "com.typesafe.akka" %% "akka-http-spray-json" % "10.1.11",
+  "com.typesafe.akka" %% "akka-stream" % akkaVersion,
+  "org.scala-lang.modules" %% "scala-xml" % "1.2.0",
+  "org.scalatest" %% "scalatest" % "3.0.8" % Test
+```
                             
 #### To Compile: 
 
