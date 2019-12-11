@@ -63,19 +63,19 @@ The following are the results we observed in our simulation.
 ![Chord](https://bitbucket.org/cmcnul3/carlos_mcnulty_project/raw/f022b0baa933dccec0e82003c380bf6d47a1b02b/images/chord.png)
 
 ###### Table 1. Average Number of Hops
-```
-===================================================================================================================
+
 |               |  10 servers |  20 servers |  40 servers |  80 servers | 160 servers | 320 servers | 640 servers |
+|---------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|
 | Simple alg.   |       3.612 |       8.524 |      18.463 |      39.077 |      79.481 |     154.963 |     311.842 |
 | Scalable alg. |       1.519 |       1.517 |       1.873 |       2.676 |       3.826 |       5.685 |       9.757 |
-```
+
 
 - In the simple Chord algorithm simulation, in which the finger table is disabled, nodes merely contact their successor nodes on the Chord ring, which results in high numbers of hops when inserting and looking up files
     - As can be observed in **Table 1**, when the number of servers is doubled, the average number of hops is also doubled
     - Therefore, the number of servers has a ***linear*** relationship with the number of hops
 - In the scalable Chord algorithm simulation, however, nodes use their finger tables to find successors, which results in fewer numbers of hops when inserting and looking up files
     - As can be observed in **Table 1**, when the number of servers is doubled, the average number of hops increases by a factor of log of the number of servers
-    - Therefore, the number of servers has a logarithmic relationship with the number of hops
+    - Therefore, the number of servers has a ***logarithmic*** relationship with the number of hops
 - This was more or less expected, because the finger table avoids the need for a linear search and significantly reduces the number of successor nodes that must be found in order to locate the key
     - With the finger table implementation of the Chord algorithm, the number of nodes which must be contacted to find a successor in an *n*-node cloud overlay network is ***O(log n)***
 
