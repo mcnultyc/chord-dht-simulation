@@ -1,10 +1,15 @@
-name := "carlos_mcnulty_project"
-
 version := "1.0"
 
 scalaVersion := "2.13.1"
 
 lazy val akkaVersion = "2.6.0"
+
+initialize := {
+  val _ = initialize.value // run the previous initialization
+  val required = "1.8"
+  val current  = sys.props("java.specification.version")
+  assert(current == required, s"Unsupported JDK: java.specification.version $current != $required")
+}
 
 libraryDependencies ++= Seq(
   "ch.qos.logback" % "logback-classic" % "1.2.3",
@@ -16,3 +21,8 @@ libraryDependencies ++= Seq(
   "org.scala-lang.modules" %% "scala-xml" % "1.2.0",
   "org.scalatest" %% "scalatest" % "3.0.8" % Test
 )
+
+dockerBaseImage := "openjdk:8"
+dockerExposedPorts := Seq(8080)
+enablePlugins(JavaAppPackaging)
+enablePlugins(DockerPlugin)

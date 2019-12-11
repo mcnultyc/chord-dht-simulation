@@ -104,16 +104,38 @@ object WebServer{
             getFromDirectory(file)
           }
         },
+        pathPrefix("movie"~Slash) {
+          extractUnmatchedPath { movieName =>
+            get {
+              implicit val timeout: Timeout = 10.seconds
+              // Create future for lookup request
+              val future = manager.ask(ServerManager.HttpLookUp(movieName.toString()))
+              // Create http route after lookup is ready
+              onComplete(future) {
+                // Match responses from the server manager
+                case Success(ServerManager.FoundFile(filename, size)) =>
+                  // Create and send http response with information about request
+                  complete(HttpResponse(entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`,
+                    "FILE FOUND!")))
+                case Success(ServerManager.FileNotFound(filename)) =>
+                  complete(HttpResponse(entity = HttpEntity(ContentTypes.`text/plain(UTF-8)`,
+                    "FILE NOT FOUND!")))
+                case Failure(ex) => complete((InternalServerError, s"ERROR: ${ex.getMessage}"))
+              }
+            }
+          }
+        },
         path("log"){
           get{
             // Get filenames from the logs directory
             val dir = new File("logs")
-            dir.listFiles.filter(_.isFile).toList.toString()
+            val total = dir.listFiles.filter(_.isFile).toList.size
             // Get the most log file from the logs directory
-            val file = (dir.listFiles.filter(_.isFile).toList.last).toString
+            val file = dir.listFiles.filter(_.isFile).toList((total-1)).toString
             getFromDirectory(file)
           }
         },
+        pathSingleSlash{
         get {
           entity(as[String]){ movie =>{
             // Set timeout for lookup request
@@ -133,7 +155,7 @@ object WebServer{
               case Failure(ex) => complete((InternalServerError, s"ERROR: ${ex.getMessage}"))
             }
           }}
-        },
+        }},
         put {
           entity(as[String]) { input => {
             val tokens = input.split("\\|")
