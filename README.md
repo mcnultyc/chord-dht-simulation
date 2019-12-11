@@ -11,7 +11,7 @@ This project utilizes the open-source [Akka](https://akka.io) toolkit, simplifyi
 - Chord is scalable, because it is not required that every node know about every other node, and the cost of a Chord lookup is always the log of the number of nodes
 - Our simulation stores data about movies in files distributed across the network and supports inserts and lookups
 
-## Project Details
+## [Project Details](https://bitbucket.org/cmcnul3/carlos_mcnulty_project/src/master/build.sbt)
 ##### Driver Language:          Scala 2.13.1
 ##### Testing Framework:        ScalaTest
 ##### Building Framework:       SBT
