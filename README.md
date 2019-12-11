@@ -2,6 +2,7 @@
 #### Description: Create a Chord cloud overlay network algorithm with convergent hashing using Akka/HTTP-based simulator.
 #### Team: Carlos Antonio McNulty (cmcnul3), Abram Gorgis (agorgi2), Priyan Sureshkumar (psures5), Shyam Patel (spate54)
 This is a course project for CS441 at the University of Illinois at Chicago.
+This project utilizes the open-source [Akka](https://akka.io) toolkit, simplifying the construction of concurrent and distributed applications on the Java Virtual Machine (JVM).
 
 
 ## Background
@@ -33,11 +34,25 @@ This is a course project for CS441 at the University of Illinois at Chicago.
 ```
 
 ## Running
-To successfully run this project, [IntelliJ IDEA](https://www.jetbrains.com/idea), [sbt](https://docs.scala-lang.org/getting-started/sbt-track/getting-started-with-scala-and-sbt-on-the-command-line.html) and [Java 8 JDK](https://www.oracle.com/technetwork/java/javase/downloads/index.html) (version 1.8 or higher) are required.
+To successfully run this project, [Docker Toolbox](https://docs.docker.com/toolbox), [IntelliJ IDEA](https://www.jetbrains.com/idea), [sbt](https://docs.scala-lang.org/getting-started/sbt-track/getting-started-with-scala-and-sbt-on-the-command-line.html) and [Java 8 JDK](https://www.oracle.com/technetwork/java/javase/downloads/index.html) (version 1.8 or higher) are required.
 
-#### To Compile: 
-
-##### To Run Simulation(s):
+#### To Compile and Run 
+##### Default Path of Dockerfile from project directory `/target/docker`: 
+##### Use image hash from build:
+                With DockerFile:
+                    1. Start docker virtualbox VM via Kitematic or Docker for Windows etc
+                    
+                    2. Terminal Commands
+                        docker login
+                        docker build path/to/dockerfile
+                        docker images
+                        docker run  -p8080:8080 imagehash
+                        
+                    3. Change Command Line Arguments in Dockerfile at respective path
+                       appropriately for differnt simulations as:
+                       
+                            (number or servers, set algorithm, system snapshot delay in seconds)
+                            (500, true, 30)
 
 
 ## Tests
@@ -64,10 +79,10 @@ The following are the results we observed in our simulation.
 
 ###### Table 1. Average Number of Hops
 
-|               |  10 servers |  20 servers |  40 servers |  80 servers | 160 servers | 320 servers | 640 servers |
-|---------------|-------------|-------------|-------------|-------------|-------------|-------------|-------------|
-| Simple alg.   |       3.612 |       8.524 |      18.463 |      39.077 |      79.481 |     154.963 |     311.842 |
-| Scalable alg. |       1.519 |       1.517 |       1.873 |       2.676 |       3.826 |       5.685 |       9.757 |
+|               | 10 servers | 20 servers | 40 servers | 80 servers | 160 servers | 320 servers | 640 servers |
+|---------------|------------|------------|------------|------------|-------------|-------------|-------------|
+| Simple alg.   |      3.612 |      8.524 |     18.463 |     39.077 |      79.481 |     154.963 |     311.842 |
+| Scalable alg. |      1.519 |      1.517 |      1.873 |      2.676 |       3.826 |       5.685 |       9.757 |
 
 
 - In the simple Chord algorithm simulation, in which the finger table is disabled, nodes merely contact their successor nodes on the Chord ring, which results in high numbers of hops when inserting and looking up files
