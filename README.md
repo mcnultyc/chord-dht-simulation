@@ -45,7 +45,7 @@ To successfully run this project, [Docker Toolbox](https://docs.docker.com/toolb
                     2. Add port forwarding to Oracle VM virtual box to port 8080 for host port and
                        8080 for guest port
                     
-                    3. Terminal Commands (here is the repo docker pull cs441/project:latest)(yes,We claimed the cs441 name on dockerhub and are willing to trade it for extra credit)
+                    3. Terminal Commands (here is the repo docker pull cs441/project:latest you shouldnt need this though)(yes,We claimed the cs441 name on dockerhub and are willing to trade it for extra credit)
                         docker login
                         docker build path/to/dockerfile (make sure to edit docker file CMD[] with proper arguments before building)
                         docker images
