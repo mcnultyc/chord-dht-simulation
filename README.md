@@ -42,13 +42,16 @@ To successfully run this project, [Docker Toolbox](https://docs.docker.com/toolb
                 With DockerFile:
                     1. Start docker virtualbox VM via Kitematic or Docker for Windows etc
                     
-                    2. Terminal Commands
+                    2. Add port forwarding to Oracle VM virtual box to port 8080 for host port and
+                       8080 for guest port
+                    
+                    3. Terminal Commands
                         docker login
                         docker build path/to/dockerfile
                         docker images
                         docker run  -p8080:8080 imagehash
                         
-                    3. Change Command Line Arguments in Dockerfile at respective path
+                    4. Change Command Line Arguments in Dockerfile at respective path
                        appropriately for differnt simulations as:
                        
                             (number or servers, set algorithm, system snapshot delay in seconds)
