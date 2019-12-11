@@ -1,8 +1,7 @@
 # CS441 Course Project - Chord Algorithm Akka/HTTP-based Simulator
 #### Description: Create a Chord cloud overlay network algorithm with convergent hashing using Akka/HTTP-based simulator.
-This is a course project for CS441 at the University of Illinois at Chicago.
-
 #### Team: Carlos Antonio McNulty (cmcnul3), Abram Gorgis (agorgi2), Priyan Sureshkumar (psures5), Shyam Patel (spate54)
+This is a course project for CS441 at the University of Illinois at Chicago.
 
 
 ## Background
@@ -16,8 +15,8 @@ This is a course project for CS441 at the University of Illinois at Chicago.
 ##### Testing Framework:        ScalaTest
 ##### Building Framework:       SBT
 ##### Configuration Library:    Typesafe
-##### Other:       
-                            1 simulation .conf files with name(s) XXXXXXXXXXXX.conf
+##### Other:                    
+                        1 simulation .conf files with name(s) application.conf
 
 ##### Main Driver Class:        WebServer in WebServer.scala
 
@@ -38,8 +37,11 @@ This is a course project for CS441 at the University of Illinois at Chicago.
 #### To Compile: 
 
 ##### To Run Simulation(s):
-                         
-##### To Run Tests(in test directory): sbt test
+
+
+## Tests
+This project includes 13 unit tests based on the [ScalaTest](http://www.scalatest.org) testing framework, which are located in the project's `test/scala` directory.
+If you would like to run the tests, simply `cd` into the project root directory and enter the following command: `sbt test`.
 
 
 ## Chord Algorithm
@@ -75,3 +77,5 @@ The following are the results we observed in our simulation.
     - Therefore, the number of servers has a logarithmic relationship with the number of hops
 - This was more or less expected, because the finger table avoids the need for a linear search and significantly reduces the number of successor nodes that must be found in order to locate the key
     - With the finger table implementation of the Chord algorithm, the number of nodes which must be contacted to find a successor in an *n*-node cloud overlay network is ***O(log n)***
+
+To view images and analysis, see `Documentation.pdf` located in the project root directory.
