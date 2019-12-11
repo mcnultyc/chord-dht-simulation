@@ -3,8 +3,6 @@
 /project/*
 /target/*
 /null/*
-/logs/*
-/snapshots/*
 
 # ignore class and jar files
 *.class
