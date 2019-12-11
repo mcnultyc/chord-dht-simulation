@@ -57,8 +57,10 @@ To successfully run this project, [Docker Toolbox](https://docs.docker.com/toolb
                             (number or servers, set algorithm, system snapshot delay in seconds)
                             (500, true, 30)
                             
-                    5.Use curl commands such as curl localhost:8080/log to get constant logging info (ctrl+c to stop),curl localhost:8080/snapshot to get most recent snapshot,
-                      curl put command with string "<filename>|<filesize>" to be inserted into the ring.
+                    5. Use curl commands such as
+                       curl localhost:8080/log to get constant logging info (Ctrl+C to stop),
+                       curl localhost:8080/snapshot to get most recent snapshot,
+                       curl put command with string "<filename>|<filesize>" to be inserted into the ring.
 
 ## Tests
 This project includes 13 unit tests based on the [ScalaTest](http://www.scalatest.org) testing framework, which are located in the project's `test/scala` directory.
@@ -71,11 +73,46 @@ For comparison, our simulator consists of two Chord algorithms.
 - In one algorithm, a simple but slow Chord lookup algorithm is used
     - Lookups are implemented on a Chord ring in which each node only knows how to contact its current successor node on the identifier circle
     - As such, queries for a given identifier may be passed around the circle via these successor references until they encounter a node that consists of the desired identifier
+    - For our implementation, we use the MD5 hashing algorithm to create node identifiers and keys
+    - We created the Chord ring by hashing the names of each Akka actor and ordering them by identifier into a circular linked list, where each server/actor has a reference to both its predecessor and successor
+    - In the simple form of the algorithm, we route messages through a server’s successor without consulting the finger table
+
 - In the other, much improved algorithm, Chord maintains additional routing information
     - Each node maintains a routing table known as the ***finger table***
     - The first finger of a node *n* is the immediate successor of *n* on the identifier circle
     - In this scheme, each node stores information about only a small number of other nodes, and knows more about nodes closely following it on the identifier circle than about nodes farther away
     - As such, given that a node’s finger table generally does not contain enough information to directly determine the successor of an arbitrary key *k*, if the id to be searched does not immediately fall between *n* and its successor, node *n* searches its finger table for the node *n’* whose identifier most immediately precedes the id
+
+
+## Server Manager
+- We created a server manager as the top level actor of the actor system
+- This actor is responsible for spawning the child server actors and preparing the datacenter in stages
+    - These stages include creating the Chord ring by distributing ids, predecessor and successor references
+- The server manager then instructs all servers to create their respective routing tables
+- When all servers have created their routing tables, the datacenter is ready to process insert and lookup requests from the web server
+- The server manager is also responsible for coordinating system snapshots by communicating with all the servers in the system and requesting their states
+- It will then produce XML files for each snapshot at specified intervals
+
+
+## Server(s)
+- Once the server manager has prepared each server actor, the actors are ready to receive insert and lookup requests
+- The servers are also capable of receiving routing requests and forwarding these requests through the system using their routing tables
+- These routing requests increment the number of hops until reaching their final destination
+- The insert and lookup requests both rely on these routing messages, which allow us to track the number of hops made through the Chord ring for each request
+- These requests are handled concurrently using anonymous child actors that are spawned for each request
+- Servers store the number of insert and lookup requests, where they are the source of those requests, and the number of hops taken for each request
+
+
+## HTTP Web Server/Client
+- We created an *http* web server as the entry point for our datacenter
+- It processes ***PUT*** and ***GET*** requests using the Akka HTTP API
+- These requests are then forwarded to the server manager, which then selects a server at random from the datacenter to handle the request
+- Once the server processes the request, the result is forwarded to the web server, and the web server is free to format the response as needed
+- The web server also provides a special path to obtain the log and snapshot files from the simulation
+- It should be noted that the log file can grow very large as the web server is processing thousands of requests from the client
+- The client first makes a series of *PUT* requests to the web server and inserts file metadata
+- It then begins issuing thousands of *GET* requests on randomly selected files to the web server
+
 
 ## Analysis
 The following are the results we observed in our simulation.
