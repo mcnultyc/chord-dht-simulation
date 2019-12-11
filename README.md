@@ -5,7 +5,7 @@ This is a course project for CS441 at the University of Illinois at Chicago.
 This project utilizes the open-source [Akka](https://akka.io) toolkit, simplifying the construction of concurrent and distributed applications on the Java Virtual Machine (JVM).
 
 
-## Background
+## [Background](https://bitbucket.org/cmcnul3/carlos_mcnulty_project/src/master/Documentation.pdf)
 - This project is a simulator of a cloud overlay network that makes use of the Chord protocol, which specifies how to find the locations of keys for files
 - Chord assigns keys to nodes using ***consistent hashing***, providing a degree of natural load balancing
 - Chord is scalable, because it is not required that every node know about every other node, and the cost of a Chord lookup is always the log of the number of nodes
@@ -62,12 +62,12 @@ To successfully run this project, [Docker Toolbox](https://docs.docker.com/toolb
                        curl localhost:8080/snapshot to get most recent snapshot,
                        curl put command with string "<filename>|<filesize>" to be inserted into the ring.
 
-## Tests
-This project includes 13 unit tests based on the [ScalaTest](http://www.scalatest.org) testing framework, which are located in the project's `test/scala` directory.
+## [Tests](https://bitbucket.org/cmcnul3/carlos_mcnulty_project/src/master/src/test/scala/WebServerTests.scala)
+This project includes 13 unit tests based on the [ScalaTest](http://www.scalatest.org) testing framework, which are located in the project's [`test/scala`](https://bitbucket.org/cmcnul3/carlos_mcnulty_project/src/master/src/test/scala) directory.
 If you would like to run the tests, simply `cd` into the project root directory and enter the following command: `sbt test`.
 
 
-## Chord Algorithm
+## [Chord Algorithm](https://bitbucket.org/cmcnul3/carlos_mcnulty_project/src/master/Documentation.pdf)
 For comparison, our simulator consists of two Chord algorithms.
 
 - In one algorithm, a simple but slow Chord lookup algorithm is used
@@ -84,7 +84,7 @@ For comparison, our simulator consists of two Chord algorithms.
     - As such, given that a node’s finger table generally does not contain enough information to directly determine the successor of an arbitrary key *k*, if the id to be searched does not immediately fall between *n* and its successor, node *n* searches its finger table for the node *n’* whose identifier most immediately precedes the id
 
 
-## Server Manager
+## [Server Manager](https://bitbucket.org/cmcnul3/carlos_mcnulty_project/src/master/src/main/scala/ServerManager.scala)
 - We created a server manager as the top level actor of the actor system
 - This actor is responsible for spawning the child server actors and preparing the datacenter in stages
     - These stages include creating the Chord ring by distributing ids, predecessor and successor references
@@ -94,7 +94,7 @@ For comparison, our simulator consists of two Chord algorithms.
 - It will then produce XML files for each snapshot at specified intervals
 
 
-## Server(s)
+## [Server(s)](https://bitbucket.org/cmcnul3/carlos_mcnulty_project/src/master/src/main/scala/Server.scala)
 - Once the server manager has prepared each server actor, the actors are ready to receive insert and lookup requests
 - The servers are also capable of receiving routing requests and forwarding these requests through the system using their routing tables
 - These routing requests increment the number of hops until reaching their final destination
@@ -103,7 +103,7 @@ For comparison, our simulator consists of two Chord algorithms.
 - Servers store the number of insert and lookup requests, where they are the source of those requests, and the number of hops taken for each request
 
 
-## HTTP Web Server/Client
+## [HTTP Web Server](https://bitbucket.org/cmcnul3/carlos_mcnulty_project/src/master/src/main/scala/WebServer.scala)/[Client](https://bitbucket.org/cmcnul3/carlos_mcnulty_project/src/master/src/main/scala/WebClient.scala)
 - We created an *http* web server as the entry point for our datacenter
 - It processes ***PUT*** and ***GET*** requests using the Akka HTTP API
 - These requests are then forwarded to the server manager, which then selects a server at random from the datacenter to handle the request
@@ -114,7 +114,7 @@ For comparison, our simulator consists of two Chord algorithms.
 - It then begins issuing thousands of *GET* requests on randomly selected files to the web server
 
 
-## Analysis
+## [Analysis](https://bitbucket.org/cmcnul3/carlos_mcnulty_project/src/master/Documentation.pdf)
 The following are the results we observed in our simulation.
 
 ![Chord](https://bitbucket.org/cmcnul3/carlos_mcnulty_project/raw/b44fe9feb367d9f61ed38dd742c4287363963b30/images/chord.png)
@@ -136,4 +136,4 @@ The following are the results we observed in our simulation.
 - This was more or less expected, because the finger table avoids the need for a linear search and significantly reduces the number of successor nodes that must be found in order to locate the key
     - With the finger table implementation of the Chord algorithm, the number of nodes which must be contacted to find a successor in an *n*-node cloud overlay network is ***O(log n)***
 
-To view images and analysis, see `Documentation.pdf` located in the project root directory.
+To view images and analysis, see [`Documentation.pdf`](https://bitbucket.org/cmcnul3/carlos_mcnulty_project/src/master/Documentation.pdf) located in the project root directory.
