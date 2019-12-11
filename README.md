@@ -47,7 +47,7 @@ To successfully run this project, [Docker Toolbox](https://docs.docker.com/toolb
                     
                     3. Terminal Commands
                         docker login
-                        docker build path/to/dockerfile
+                        docker build path/to/dockerfile (make sure to edit docker file CMD[] with proper arguments before building)
                         docker images
                         docker run  -p8080:8080 imagehash
                         
