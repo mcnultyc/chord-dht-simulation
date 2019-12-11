@@ -33,6 +33,7 @@ This is a course project for CS441 at the University of Illinois at Chicago.
 ```
 
 ## Running
+To successfully run this project, [IntelliJ IDEA](https://www.jetbrains.com/idea), [sbt](https://docs.scala-lang.org/getting-started/sbt-track/getting-started-with-scala-and-sbt-on-the-command-line.html) and [Java 8 JDK](https://www.oracle.com/technetwork/java/javase/downloads/index.html) (version 1.8 or higher) are required.
 
 #### To Compile: 
 
