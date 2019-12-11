@@ -56,7 +56,9 @@ To successfully run this project, [Docker Toolbox](https://docs.docker.com/toolb
                        
                             (number or servers, set algorithm, system snapshot delay in seconds)
                             (500, true, 30)
-
+                            
+                    5.Use curl commands such as curl localhost:8080/log to get constant logging info (ctrl+c to stop),curl localhost:8080/snapshot to get most recent snapshot,
+                      curl put command with string "<filename>|<filesize>" to be inserted into the ring.
 
 ## Tests
 This project includes 13 unit tests based on the [ScalaTest](http://www.scalatest.org) testing framework, which are located in the project's `test/scala` directory.
