@@ -117,7 +117,7 @@ For comparison, our simulator consists of two Chord algorithms.
 ## [Analysis](https://bitbucket.org/cmcnul3/carlos_mcnulty_project/src/master/Documentation.pdf)
 The following are the results we observed in our simulation.
 
-![Chord](https://bitbucket.org/cmcnul3/carlos_mcnulty_project/raw/b44fe9feb367d9f61ed38dd742c4287363963b30/images/chord.png)
+![Chord](images/chord.png)
 
 ###### Table 1. Average Number of Hops
 
